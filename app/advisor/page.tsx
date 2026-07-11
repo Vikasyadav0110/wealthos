@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getProfile, getInvestments, getSalaryEntries, getChatHistory, saveChatHistory, clearChatHistory } from '@/lib/storage';
 import { buildFinancialContext } from '@/lib/aiContext';
 import type { ChatMessage } from '@/types';
@@ -27,13 +28,15 @@ function formatMessage(text: string): string {
     .replace(/\n/g, '<br/>');
 }
 
-export default function AdvisorPage() {
+function AdvisorContent() {
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasKey, setHasKey] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const askedRef = useRef(false);
 
   useEffect(() => {
     const p = getProfile();
@@ -51,6 +54,18 @@ export default function AdvisorPage() {
   }, []);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // Deep-link: /advisor?ask=<question> auto-sends the question once on load
+  // (e.g. from the Financial Plan page's "recommend funds for me" button).
+  useEffect(() => {
+    if (askedRef.current) return;
+    const ask = searchParams.get('ask');
+    if (ask && ask.trim()) {
+      askedRef.current = true;
+      sendMessage(ask.trim());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const sendMessage = async (text?: string) => {
     const userText = text || input.trim();
@@ -206,5 +221,15 @@ export default function AdvisorPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// useSearchParams requires a Suspense boundary or the production build fails
+// ("Missing Suspense boundary with useSearchParams").
+export default function AdvisorPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" style={{ width: 36, height: 36 }} /></div>}>
+      <AdvisorContent />
+    </Suspense>
   );
 }

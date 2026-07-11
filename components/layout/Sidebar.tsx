@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, TrendingUp, PieChart,
   Newspaper, Bot, Settings, Zap, Compass, ReceiptText, Tag,
-  Target, Percent, Coins
+  Target, Percent, Coins, Route
 } from 'lucide-react';
 
 const NAV = [
@@ -16,6 +16,7 @@ const NAV = [
     { href: '/expenses', label: 'Daily Expenses', icon: ReceiptText },
   ]},
   { section: 'Wealth & Goals', items: [
+    { href: '/plan', label: 'Financial Plan', icon: Route },
     { href: '/portfolio', label: 'My Portfolio', icon: PieChart },
     { href: '/goals', label: 'Goals Tracker', icon: Target },
   ]},
