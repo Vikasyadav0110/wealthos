@@ -33,10 +33,12 @@ function CashFlow({ incomes, deductions, takeHome, expenses, savings }: {
   expenses: number;
   savings: number;
 }) {
-  const H = 200;
+  const H = 280;                 // taller so tall stacks + labels never clip
+  const PAD = 14;                // vertical breathing room top & bottom
+  const usableH = H - PAD * 2;
   const gross = incomes.reduce((s, i) => s + i.value, 0);
   const scaleRef = Math.max(gross, 1);
-  const px = (v: number) => Math.max((v / scaleRef) * H, v > 0 ? 3 : 0); // amount → pixels
+  const px = (v: number) => Math.max((v / scaleRef) * usableH, v > 0 ? 4 : 0); // amount → pixels
 
   // Left column: income sources, stacked. Middle: in-hand + deductions. Right: expenses + savings.
   const colX = { left: 12, mid: 200, right: 388 };
@@ -45,7 +47,7 @@ function CashFlow({ incomes, deductions, takeHome, expenses, savings }: {
   // Stack helper: returns [{y, h, ...item}] centered vertically.
   const stack = <T extends { value: number }>(items: T[]) => {
     const totalH = items.reduce((s, i) => s + px(i.value), 0) + (items.length - 1) * 4;
-    let y = (H - totalH) / 2;
+    let y = PAD + Math.max((usableH - totalH) / 2, 0); // center within the padded area
     return items.map((it) => { const h = px(it.value); const seg = { y, h, item: it }; y += h + 4; return seg; });
   };
 
@@ -613,36 +615,43 @@ export default function SalaryPage() {
                 </select>
               </div>
             </div>
-            <div style={{ minHeight: 200, height: 220 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} barSize={18}>
-                  <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false}
-                    tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                    formatter={(v) => [typeof v === 'number' ? `₹${(v as number).toLocaleString('en-IN')}` : v, '']} />
-                  {trendSeries.income && <Bar dataKey="salary" fill="var(--blue)" radius={[4, 4, 0, 0]} name="Income" />}
-                  {trendSeries.savings && <Bar dataKey="savings" fill="var(--green)" radius={[4, 4, 0, 0]} name="Savings" />}
-                  {trendSeries.expenses && <Bar dataKey="expenses" fill="var(--gold)" radius={[4, 4, 0, 0]} name="Expenses" opacity={0.8} />}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Cash-flow flow (selected month): sources → in-hand → out */}
-            {activeEntry && activeBreakdown && (
-              <div style={{ borderTop: '1px solid var(--border)', marginTop: '0.75rem', paddingTop: '0.75rem' }}>
-                <div className="section-title" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-                  Cash flow · {monthLabel(activeEntry.month)}
+            {/* Trend chart + cash-flow, side by side (stack on narrow screens) */}
+            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem', alignItems: 'stretch' }}>
+              <div style={{ minHeight: 260, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, minHeight: 240 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} barSize={18}>
+                      <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false}
+                        tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                        formatter={(v) => [typeof v === 'number' ? `₹${(v as number).toLocaleString('en-IN')}` : v, '']} />
+                      {trendSeries.income && <Bar dataKey="salary" fill="var(--blue)" radius={[4, 4, 0, 0]} name="Income" />}
+                      {trendSeries.savings && <Bar dataKey="savings" fill="var(--green)" radius={[4, 4, 0, 0]} name="Savings" />}
+                      {trendSeries.expenses && <Bar dataKey="expenses" fill="var(--gold)" radius={[4, 4, 0, 0]} name="Expenses" opacity={0.8} />}
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-                <CashFlow
-                  incomes={allTimeIncomeDataForEntry(activeEntry)}
-                  deductions={activeBreakdown.deductions}
-                  takeHome={heroTakeHome}
-                  expenses={activeEntry.expenses}
-                  savings={activeEntry.savings}
-                />
               </div>
-            )}
+
+              {/* Cash-flow (selected month): sources → in-hand → out */}
+              {activeEntry && activeBreakdown && (
+                <div style={{ borderLeft: '1px solid var(--border)', paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column' }}>
+                  <div className="section-title" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                    Cash flow · {monthLabel(activeEntry.month)}
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                    <CashFlow
+                      incomes={allTimeIncomeDataForEntry(activeEntry)}
+                      deductions={activeBreakdown.deductions}
+                      takeHome={heroTakeHome}
+                      expenses={activeEntry.expenses}
+                      savings={activeEntry.savings}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Breakdown Charts (Latest Month / Selected Month) */}
