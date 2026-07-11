@@ -1,6 +1,7 @@
 import type { UserProfile, SalaryEntry, Investment } from '@/types';
 import { formatFullCurrency, formatPercent } from './formatters';
 import { getDailyExpenses } from './storage';
+import { computeTakeHome } from './income';
 
 export function buildFinancialContext(
   profile: UserProfile,
@@ -41,7 +42,7 @@ export function buildFinancialContext(
 
   let salaryIncomeStr = '- No income data entered yet';
   if (latestSalary) {
-    const takeHome = latestSalary.grossSalary - latestSalary.pf - latestSalary.tax - latestSalary.otherDeductions;
+    const takeHome = computeTakeHome(latestSalary);
     
     // Incomes breakdown
     const incomes = latestSalary.incomes || [

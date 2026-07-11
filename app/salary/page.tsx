@@ -2,9 +2,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getSalaryEntries, saveSalaryEntry, deleteSalaryEntry, getDailyExpenses, getCustomIncomes, saveCustomIncomes, getCustomExpenses, saveCustomExpenses, CategoryItem } from '@/lib/storage';
 import { formatCurrency, monthLabel, currentMonth, generateId } from '@/lib/formatters';
+import { computeTakeHome, computeIncomeBreakdown } from '@/lib/income';
 import type { SalaryEntry, IncomeSource, ExpenseItem } from '@/types';
 import { Plus, Trash2, X, TrendingUp, DollarSign, Receipt, Eye, Download, Printer } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
 
@@ -107,7 +108,12 @@ export default function SalaryPage() {
 
   const totalIncomes = incomes.reduce((s, i) => s + (i.amount || 0), 0);
   const totalDeductions = pf + tax + otherDeductions;
-  const takeHome = totalIncomes - totalDeductions;
+  // Deductions (PF/tax) apply only to salary (primary income). Other income
+  // — rental, side hustle, etc. — is added after deductions, so it isn't taxed
+  // or PF'd as if it were salary.
+  const salaryIncome = incomes.reduce((s, i) => s + (i.type === 'primary' ? (i.amount || 0) : 0), 0);
+  const otherIncome = totalIncomes - salaryIncome;
+  const takeHome = (salaryIncome - totalDeductions) + otherIncome;
   const totalExpenses = expenseItems.reduce((s, e) => s + (e.amount || 0), 0);
   const totalSavings = Math.max(takeHome - totalExpenses, 0);
 
@@ -315,6 +321,7 @@ export default function SalaryPage() {
 
   // Selected Entry Data parsing for visual breakdowns
   const activeEntry = entries.find((e) => e.id === selectedEntryId) || entries[0];
+  const activeBreakdown = activeEntry ? computeIncomeBreakdown(activeEntry) : null;
   
   // Format data for selected month's income breakdown pie chart
   const activeIncomesData = activeEntry ? (activeEntry.incomes && activeEntry.incomes.length > 0 ? activeEntry.incomes : [
@@ -324,6 +331,23 @@ export default function SalaryPage() {
     value: inc.amount,
     color: incomeTypes.find(c => c.id === inc.type)?.color || '#94a3b8'
   })) : [];
+
+  // All-time income by source, summed across every month — one pie for the whole history.
+  const allTimeIncomeMap = new Map<string, { name: string; value: number; color: string }>();
+  entries.forEach((e) => {
+    const rows = e.incomes && e.incomes.length > 0
+      ? e.incomes
+      : [{ id: 'def', sourceName: 'Primary Salary', amount: e.grossSalary, type: 'primary' }];
+    rows.forEach((inc) => {
+      const key = (inc.sourceName || 'Primary Salary').trim() || 'Primary Salary';
+      const color = incomeTypes.find((c) => c.id === inc.type)?.color || '#94a3b8';
+      const existing = allTimeIncomeMap.get(key);
+      if (existing) existing.value += inc.amount;
+      else allTimeIncomeMap.set(key, { name: key, value: inc.amount, color });
+    });
+  });
+  const allTimeIncomeData = [...allTimeIncomeMap.values()].filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  const allTimeIncomeTotal = allTimeIncomeData.reduce((s, d) => s + d.value, 0);
 
   // Format data for selected month's expense categories breakdown pie chart
   const activeExpensesData = activeEntry ? (activeEntry.expenseItems && activeEntry.expenseItems.length > 0 ? activeEntry.expenseItems : [
@@ -410,7 +434,7 @@ export default function SalaryPage() {
           <div className="stat-value" style={{ color: 'var(--gold)' }}>
             {entries[0] ? formatCurrency(entries[0].expenses) : '—'}
           </div>
-          <div className="stat-sub">Net take-home: {entries[0] ? formatCurrency(entries[0].grossSalary - entries[0].pf - entries[0].tax - entries[0].otherDeductions) : '—'}</div>
+          <div className="stat-sub">Net take-home: {entries[0] ? formatCurrency(computeTakeHome(entries[0])) : '—'}</div>
         </div>
       </div>
 
@@ -470,6 +494,35 @@ export default function SalaryPage() {
 
             {activeEntry ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* Salary vs other income — deductions apply to salary only */}
+                {activeBreakdown && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.78rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Salary (PF/tax-eligible)</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(activeBreakdown.salaryIncome)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Other income</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(activeBreakdown.otherIncome)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        Deductions (on salary){activeBreakdown.salaryIncome > 0 ? ` · ${Math.round((activeBreakdown.deductions / activeBreakdown.salaryIncome) * 100)}% of salary` : ''}
+                      </span>
+                      <span style={{ color: 'var(--red)', fontWeight: 500 }}>−{formatCurrency(activeBreakdown.deductions)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '0.4rem', marginTop: '0.1rem' }}>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Net take-home</span>
+                      <span style={{ color: 'var(--green)', fontWeight: 600 }}>{formatCurrency(activeBreakdown.takeHome)}</span>
+                    </div>
+                    {activeBreakdown.legacy && (
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                        This older entry has no income breakdown, so its full amount is treated as salary.
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Expense categories progress bars */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                   <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Expenses by Category</div>
@@ -490,9 +543,47 @@ export default function SalaryPage() {
                   {activeExpensesData.length === 0 && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No expense data</div>}
                 </div>
 
+                {/* All-time income by source — one pie for the whole history */}
+                {allTimeIncomeData.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                      All Income by Source <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(all months)</span>
+                    </div>
+                    <div style={{ height: 180 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={allTimeIncomeData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2}>
+                            {allTimeIncomeData.map((d) => <Cell key={d.name} fill={d.color} />)}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                            formatter={(v) => {
+                              const num = Number(v);
+                              const pct = allTimeIncomeTotal > 0 ? Math.round((num / allTimeIncomeTotal) * 100) : 0;
+                              return [`${formatCurrency(num)} (${pct}%)`, 'Total'];
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 0.75rem', justifyContent: 'center' }}>
+                      {allTimeIncomeData.map((d) => {
+                        const pct = allTimeIncomeTotal > 0 ? Math.round((d.value / allTimeIncomeTotal) * 100) : 0;
+                        return (
+                          <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem' }}>
+                            <span style={{ width: 9, height: 9, borderRadius: 2, background: d.color, flexShrink: 0 }} />
+                            <span style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
+                            <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{pct}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Income sources progress bars */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Income Streams</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Income Streams <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({activeEntry ? monthLabel(activeEntry.month) : ''})</span></div>
                   {activeIncomesData.map((inc) => {
                     const pct = activeEntry.grossSalary > 0 ? Math.round((inc.value / activeEntry.grossSalary) * 100) : 0;
                     return (
