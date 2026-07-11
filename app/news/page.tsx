@@ -65,39 +65,40 @@ export default function NewsPage() {
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [hasApiKey, setHasApiKey] = useState(false);
 
-  const fetchNews = useCallback(async (q?: string) => {
-    const p = getProfile();
-    if (!p?.newsApiKey) {
-      // Demo mode: Filter DEMO_ARTICLES locally by active category or search query
-      if (q && q.trim()) {
-        const queryLower = q.toLowerCase();
-        const filtered = DEMO_ARTICLES.filter(
-          (art) =>
-            art.title.toLowerCase().includes(queryLower) ||
-            art.description.toLowerCase().includes(queryLower)
-        );
-        setArticles(filtered);
-      } else {
-        const filtered = DEMO_ARTICLES.filter((art) => art.category === category.id);
-        setArticles(filtered);
-      }
-      return;
+  const showDemo = useCallback((q?: string) => {
+    // Demo mode: filter DEMO_ARTICLES locally by active category or search query
+    if (q && q.trim()) {
+      const queryLower = q.toLowerCase();
+      setArticles(DEMO_ARTICLES.filter(
+        (art) =>
+          art.title.toLowerCase().includes(queryLower) ||
+          art.description.toLowerCase().includes(queryLower)
+      ));
+    } else {
+      setArticles(DEMO_ARTICLES.filter((art) => art.category === category.id));
     }
+  }, [category]);
+
+  const fetchNews = useCallback(async (q?: string) => {
+    // Always try the API — the route falls back to the server's NEWSAPI_KEY
+    // when the user hasn't set their own. On any failure we drop to demo data.
     setLoading(true); setError('');
     try {
+      const p = getProfile();
       const query = q || category.q;
-      const res = await fetch(`/api/news?q=${encodeURIComponent(query)}&apiKey=${p.newsApiKey}`);
+      const keyParam = p?.newsApiKey ? `&apiKey=${p.newsApiKey}` : '';
+      const res = await fetch(`/api/news?q=${encodeURIComponent(query)}${keyParam}`);
       const data = await res.json();
-      if (data.error) { setError(data.error); setArticles(DEMO_ARTICLES.filter((art) => art.category === category.id)); return; }
+      if (data.error) { setError(data.error); showDemo(q); return; }
       const enriched: NewsArticle[] = (data.articles || []).map((a: { title: string; description: string; url: string; source: { name: string }; publishedAt: string }) => ({
         title: a.title, description: a.description, url: a.url,
         source: a.source?.name || '', publishedAt: a.publishedAt,
         sentiment: getSentiment(`${a.title} ${a.description}`),
       }));
-      setArticles(enriched.length ? enriched : DEMO_ARTICLES.filter((art) => art.category === category.id));
-    } catch { setError('Failed to fetch news. Showing demo data.'); setArticles(DEMO_ARTICLES.filter((art) => art.category === category.id)); }
+      if (enriched.length) setArticles(enriched); else showDemo(q);
+    } catch { setError('Failed to fetch news. Showing demo data.'); showDemo(q); }
     finally { setLoading(false); }
-  }, [category]);
+  }, [category, showDemo]);
 
   useEffect(() => {
     const p = getProfile();
