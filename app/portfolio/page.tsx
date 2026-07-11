@@ -8,17 +8,6 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recha
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
 
-const DEFAULT_INVESTMENT_TYPES = [
-  { id: 'stock', label: 'Stocks', color: '#3b82f6', icon: '📈' },
-  { id: 'mutual_fund', label: 'Mutual Funds', color: '#10b981', icon: '💼' },
-  { id: 'fd', label: 'Fixed Deposits', color: '#f59e0b', icon: '🏦' },
-  { id: 'gold', label: 'Gold / SGB', color: '#fbbf24', icon: '🏅' },
-  { id: 'ppf', label: 'PPF / EPF', color: '#8b5cf6', icon: '💳' },
-  { id: 'real_estate', label: 'Real Estate', color: '#ec4899', icon: '🏠' },
-  { id: 'crypto', label: 'Crypto', color: '#06b6d4', icon: '🪙' },
-  { id: 'other', label: 'Other Assets', color: '#94a3b8', icon: '🏷️' },
-];
-
 const EMPTY: Omit<Investment, 'id' | 'lastUpdated' | 'startDate'> = {
   name: '', type: 'mutual_fund', investedAmount: 0, currentValue: 0,
   quantity: undefined, buyPrice: undefined, sipAmount: undefined, dividends: 0, notes: '',
@@ -30,7 +19,7 @@ export default function PortfolioPage() {
   const [form, setForm] = useState({ ...EMPTY, startDate: '' });
   const [editId, setEditId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('all');
-  const [assetTypes, setAssetTypes] = useState(DEFAULT_INVESTMENT_TYPES);
+  const [assetTypes, setAssetTypes] = useState<{ id: string; label: string; color: string; icon: string }[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showTypeInput, setShowTypeInput] = useState(false);
   const { success } = useToast();
@@ -38,12 +27,12 @@ export default function PortfolioPage() {
   const reload = () => {
     setInvestments(getInvestments());
     const custom = getCustomInvestments();
-    const compiled = [...DEFAULT_INVESTMENT_TYPES, ...custom.map(c => ({
+    const compiled = custom.map(c => ({
       id: c.id,
       label: c.label.split(' ').slice(1).join(' '),
-      color: '#fbbf24',
+      color: c.color,
       icon: c.label.split(' ')[0] || '🏷️'
-    }))];
+    }));
     setAssetTypes(compiled);
   };
 
@@ -67,12 +56,12 @@ export default function PortfolioPage() {
     const list = getCustomInvestments();
     list.push(newType);
     saveCustomInvestments(list);
-    setAssetTypes([...DEFAULT_INVESTMENT_TYPES, ...list.map(c => ({
+    setAssetTypes(list.map(c => ({
       id: c.id,
       label: c.label.split(' ').slice(1).join(' '),
-      color: '#fbbf24',
+      color: c.color,
       icon: c.label.split(' ')[0] || '🏷️'
-    }))]);
+    })));
     upd('type', slug);
     setShowTypeInput(false);
   };

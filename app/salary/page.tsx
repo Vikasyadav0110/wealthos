@@ -1,54 +1,12 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { getSalaryEntries, saveSalaryEntry, deleteSalaryEntry, getDailyExpenses, getCustomIncomes, saveCustomIncomes, getCustomExpenses, saveCustomExpenses } from '@/lib/storage';
+import { getSalaryEntries, saveSalaryEntry, deleteSalaryEntry, getDailyExpenses, getCustomIncomes, saveCustomIncomes, getCustomExpenses, saveCustomExpenses, CategoryItem } from '@/lib/storage';
 import { formatCurrency, monthLabel, currentMonth, generateId } from '@/lib/formatters';
 import type { SalaryEntry, IncomeSource, ExpenseItem } from '@/types';
 import { Plus, Trash2, X, TrendingUp, DollarSign, Receipt, Eye, Download, Printer } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
-
-const DEFAULT_INCOME_TYPES = [
-  { id: 'primary', label: '💼 Primary Job' },
-  { id: 'side_hustle', label: '🚀 Side Hustle' },
-  { id: 'investment', label: '📈 Investment' },
-  { id: 'rental', label: '🏠 Rental Income' },
-  { id: 'other', label: '💰 Other' },
-];
-
-const DEFAULT_EXPENSE_CATEGORIES = [
-  { id: 'rent', label: '🏠 Rent / Housing', color: '#ec4899' },
-  { id: 'groceries', label: '🛒 Groceries / Food', color: '#10b981' },
-  { id: 'utilities', label: '🔌 Bills / Utilities', color: '#3b82f6' },
-  { id: 'entertainment', label: '🎬 Fun / Leisure', color: '#8b5cf6' },
-  { id: 'transport', label: '🚗 Transport / Fuel', color: '#06b6d4' },
-  { id: 'emi_car', label: '🚗 EMI - Car', color: '#f59e0b' },
-  { id: 'emi_phone', label: '📱 EMI - Phone', color: '#14b8a6' },
-  { id: 'healthcare', label: '🏥 Medical / Health', color: '#ef4444' },
-  { id: 'education', label: '📚 Study / Kids', color: '#a855f7' },
-  { id: 'other', label: '🛍️ Other Expenses', color: '#94a3b8' },
-];
-
-const INCOME_COLORS: Record<string, string> = {
-  primary: '#3b82f6',
-  side_hustle: '#10b981',
-  investment: '#fbbf24',
-  rental: '#ec4899',
-  other: '#94a3b8'
-};
-
-const DEFAULT_EXPENSE_COLORS: Record<string, string> = {
-  rent: '#ec4899',
-  groceries: '#10b981',
-  utilities: '#3b82f6',
-  entertainment: '#8b5cf6',
-  transport: '#06b6d4',
-  emi_car: '#f59e0b',
-  emi_phone: '#14b8a6',
-  healthcare: '#ef4444',
-  education: '#a855f7',
-  other: '#94a3b8'
-};
 
 const EMPTY_INCOME = (): IncomeSource => ({
   id: generateId(),
@@ -84,8 +42,8 @@ export default function SalaryPage() {
   const [incomes, setIncomes] = useState<IncomeSource[]>([EMPTY_INCOME()]);
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>([EMPTY_EXPENSE()]);
 
-  const [expenseCategories, setExpenseCategories] = useState(DEFAULT_EXPENSE_CATEGORIES);
-  const [incomeTypes, setIncomeTypes] = useState(DEFAULT_INCOME_TYPES);
+  const [expenseCategories, setExpenseCategories] = useState<CategoryItem[]>([]);
+  const [incomeTypes, setIncomeTypes] = useState<CategoryItem[]>([]);
 
   // Selected Entry for Detailed Breakdown Charts
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
@@ -97,10 +55,10 @@ export default function SalaryPage() {
     
     // Load custom categories
     const customExps = getCustomExpenses();
-    setExpenseCategories([...DEFAULT_EXPENSE_CATEGORIES, ...customExps]);
+    setExpenseCategories(customExps);
 
     const customIncs = getCustomIncomes();
-    setIncomeTypes([...DEFAULT_INCOME_TYPES, ...customIncs]);
+    setIncomeTypes(customIncs);
   }, []);
 
   const handleExpenseCategoryChange = (rowId: string, val: string) => {
@@ -117,7 +75,7 @@ export default function SalaryPage() {
     const list = getCustomExpenses();
     list.push(newCat);
     saveCustomExpenses(list);
-    setExpenseCategories([...DEFAULT_EXPENSE_CATEGORIES, ...list]);
+    setExpenseCategories(list);
     updateExpenseRow(rowId, 'category', slug);
     setShowExpCatInput(null);
   };
@@ -136,7 +94,7 @@ export default function SalaryPage() {
     const list = getCustomIncomes();
     list.push(newType);
     saveCustomIncomes(list);
-    setIncomeTypes([...DEFAULT_INCOME_TYPES, ...list]);
+    setIncomeTypes(list);
     updateIncomeRow(rowId, 'type', slug);
     setShowIncTypeInput(null);
   };
@@ -360,7 +318,7 @@ export default function SalaryPage() {
   ]).map((inc) => ({
     name: inc.sourceName || 'Primary Salary',
     value: inc.amount,
-    color: INCOME_COLORS[inc.type] || '#94a3b8'
+    color: incomeTypes.find(c => c.id === inc.type)?.color || '#94a3b8'
   })) : [];
 
   // Format data for selected month's expense categories breakdown pie chart
@@ -375,7 +333,7 @@ export default function SalaryPage() {
         category: exp.category,
         name: expenseCategories.find((c) => c.id === exp.category)?.label.split(' ').slice(1).join(' ') || exp.category,
         value: exp.amount,
-        color: DEFAULT_EXPENSE_COLORS[exp.category] || '#94a3b8'
+        color: expenseCategories.find(c => c.id === exp.category)?.color || '#94a3b8'
       });
     }
     return acc;

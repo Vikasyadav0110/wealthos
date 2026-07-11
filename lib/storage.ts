@@ -92,14 +92,116 @@ export const deleteDailyExpense = (id: string) => {
 // --- Custom Categories ---
 export interface CategoryItem { id: string; label: string; color: string; }
 
-export const getCustomIncomes = (): CategoryItem[] => get<CategoryItem[]>(KEYS.customIncomes, []);
+export const DEFAULT_INCOMES: CategoryItem[] = [
+  { id: 'primary', label: '💼 Primary Job', color: '#3b82f6' },
+  { id: 'side_hustle', label: '🚀 Side Hustle', color: '#10b981' },
+  { id: 'investment', label: '📈 Investment', color: '#fbbf24' },
+  { id: 'rental', label: '🏠 Rental Income', color: '#ec4899' },
+  { id: 'other', label: '💰 Other', color: '#94a3b8' },
+];
+
+export const DEFAULT_EXPENSES: CategoryItem[] = [
+  { id: 'rent', label: '🏠 Rent / Housing', color: '#ec4899' },
+  { id: 'groceries', label: '🛒 Groceries / Food', color: '#10b981' },
+  { id: 'utilities', label: '🔌 Bills / Utilities', color: '#3b82f6' },
+  { id: 'entertainment', label: '🎬 Fun / Leisure', color: '#8b5cf6' },
+  { id: 'transport', label: '🚗 Transport / Fuel', color: '#06b6d4' },
+  { id: 'emi_car', label: '🚗 EMI - Car', color: '#f59e0b' },
+  { id: 'emi_phone', label: '📱 EMI - Phone', color: '#14b8a6' },
+  { id: 'healthcare', label: '🏥 Medical / Health', color: '#ef4444' },
+  { id: 'education', label: '📚 Study / Kids', color: '#a855f7' },
+  { id: 'other', label: '🛍️ Other Expenses', color: '#94a3b8' },
+];
+
+export const DEFAULT_INVESTMENTS: CategoryItem[] = [
+  { id: 'stock', label: '📈 Stocks', color: '#3b82f6' },
+  { id: 'mutual_fund', label: '💼 Mutual Funds', color: '#10b981' },
+  { id: 'fd', label: '🏦 Fixed Deposits', color: '#fbbf24' },
+  { id: 'gold', label: '🏅 Gold / SGB', color: '#f59e0b' },
+  { id: 'ppf', label: '💳 PPF / EPF', color: '#8b5cf6' },
+  { id: 'real_estate', label: '🏠 Real Estate', color: '#ec4899' },
+  { id: 'crypto', label: '🪙 Crypto', color: '#06b6d4' },
+  { id: 'other', label: '🏷️ Other Assets', color: '#94a3b8' },
+];
+
+export const getCustomIncomes = (): CategoryItem[] => {
+  if (typeof window === 'undefined') return DEFAULT_INCOMES;
+  const raw = localStorage.getItem(KEYS.customIncomes);
+  if (!raw) {
+    set(KEYS.customIncomes, DEFAULT_INCOMES);
+    return DEFAULT_INCOMES;
+  }
+  let list: CategoryItem[];
+  try {
+    list = JSON.parse(raw) as CategoryItem[];
+  } catch {
+    set(KEYS.customIncomes, DEFAULT_INCOMES);
+    return DEFAULT_INCOMES;
+  }
+  const hasDefaults = list.some(c => DEFAULT_INCOMES.some(d => d.id === c.id));
+  if (!hasDefaults) {
+    const merged = [...DEFAULT_INCOMES, ...list];
+    set(KEYS.customIncomes, merged);
+    return merged;
+  }
+  return list;
+};
 export const saveCustomIncomes = (list: CategoryItem[]) => set(KEYS.customIncomes, list);
 
-export const getCustomExpenses = (): CategoryItem[] => get<CategoryItem[]>(KEYS.customExpenses, []);
+export const getCustomExpenses = (): CategoryItem[] => {
+  if (typeof window === 'undefined') return DEFAULT_EXPENSES;
+  const raw = localStorage.getItem(KEYS.customExpenses);
+  if (!raw) {
+    set(KEYS.customExpenses, DEFAULT_EXPENSES);
+    return DEFAULT_EXPENSES;
+  }
+  let list: CategoryItem[];
+  try {
+    list = JSON.parse(raw) as CategoryItem[];
+  } catch {
+    set(KEYS.customExpenses, DEFAULT_EXPENSES);
+    return DEFAULT_EXPENSES;
+  }
+  const hasDefaults = list.some(c => DEFAULT_EXPENSES.some(d => d.id === c.id));
+  if (!hasDefaults) {
+    const merged = [...DEFAULT_EXPENSES, ...list];
+    set(KEYS.customExpenses, merged);
+    return merged;
+  }
+  return list;
+};
 export const saveCustomExpenses = (list: CategoryItem[]) => set(KEYS.customExpenses, list);
 
-export const getCustomInvestments = (): CategoryItem[] => get<CategoryItem[]>(KEYS.customInvestments, []);
+export const getCustomInvestments = (): CategoryItem[] => {
+  if (typeof window === 'undefined') return DEFAULT_INVESTMENTS;
+  const raw = localStorage.getItem(KEYS.customInvestments);
+  if (!raw) {
+    set(KEYS.customInvestments, DEFAULT_INVESTMENTS);
+    return DEFAULT_INVESTMENTS;
+  }
+  let list: CategoryItem[];
+  try {
+    list = JSON.parse(raw) as CategoryItem[];
+  } catch {
+    set(KEYS.customInvestments, DEFAULT_INVESTMENTS);
+    return DEFAULT_INVESTMENTS;
+  }
+  const hasDefaults = list.some(c => DEFAULT_INVESTMENTS.some(d => d.id === c.id));
+  if (!hasDefaults) {
+    const merged = [...DEFAULT_INVESTMENTS, ...list];
+    set(KEYS.customInvestments, merged);
+    return merged;
+  }
+  return list;
+};
 export const saveCustomInvestments = (list: CategoryItem[]) => set(KEYS.customInvestments, list);
+
+export const resetCategoriesToDefaults = () => {
+  if (typeof window === 'undefined') return;
+  set(KEYS.customIncomes, DEFAULT_INCOMES);
+  set(KEYS.customExpenses, DEFAULT_EXPENSES);
+  set(KEYS.customInvestments, DEFAULT_INVESTMENTS);
+};
 
 // --- Goals ---
 export const getGoals = (): Goal[] => get<Goal[]>(KEYS.goals, []);

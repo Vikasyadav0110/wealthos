@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getDailyExpenses, saveDailyExpense, deleteDailyExpense, getProfile, getCustomExpenses, saveCustomExpenses } from '@/lib/storage';
+import { getDailyExpenses, saveDailyExpense, deleteDailyExpense, getProfile, getCustomExpenses, saveCustomExpenses, CategoryItem } from '@/lib/storage';
 import { formatCurrency, generateId } from '@/lib/formatters';
 import type { DailyExpense } from '@/types';
 import { Plus, Trash2, Calendar, Filter, Receipt, Download, Printer } from 'lucide-react';
@@ -8,23 +8,10 @@ import { XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pi
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
 
-const DEFAULT_CATEGORIES = [
-  { id: 'rent', label: '🏠 Rent / Housing', color: '#ec4899' },
-  { id: 'groceries', label: '🛒 Groceries / Food', color: '#10b981' },
-  { id: 'utilities', label: '🔌 Bills / Utilities', color: '#3b82f6' },
-  { id: 'entertainment', label: '🎬 Fun / Leisure', color: '#8b5cf6' },
-  { id: 'transport', label: '🚗 Transport / Fuel', color: '#06b6d4' },
-  { id: 'emi_car', label: '🚗 EMI - Car', color: '#f59e0b' },
-  { id: 'emi_phone', label: '📱 EMI - Phone', color: '#14b8a6' },
-  { id: 'healthcare', label: '🏥 Medical / Health', color: '#ef4444' },
-  { id: 'education', label: '📚 Study / Kids', color: '#a855f7' },
-  { id: 'other', label: '🛍️ Other Expenses', color: '#94a3b8' },
-];
-
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<DailyExpense[]>([]);
   const [amount, setAmount] = useState('');
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [category, setCategory] = useState<string>('groceries');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
@@ -47,7 +34,7 @@ export default function ExpensesPage() {
     }
     
     const list = getCustomExpenses();
-    setCategories([...DEFAULT_CATEGORIES, ...list]);
+    setCategories(list);
   };
 
   useEffect(() => {
@@ -97,7 +84,7 @@ export default function ExpensesPage() {
     const list = getCustomExpenses();
     list.push(newCat);
     saveCustomExpenses(list);
-    setCategories([...DEFAULT_CATEGORIES, ...list]);
+    setCategories(list);
     setCategory(slug);
     setShowCatInput(false);
   };

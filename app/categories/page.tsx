@@ -4,45 +4,13 @@ import {
   getCustomIncomes, saveCustomIncomes,
   getCustomExpenses, saveCustomExpenses,
   getCustomInvestments, saveCustomInvestments,
+  resetCategoriesToDefaults,
+  DEFAULT_INCOMES, DEFAULT_EXPENSES, DEFAULT_INVESTMENTS,
   CategoryItem
 } from '@/lib/storage';
-import { Plus, Trash2, Tag, Wallet, PieChart, Lock, Sparkles, Layers, Search, LayoutGrid } from 'lucide-react';
+import { Plus, Trash2, Tag, Wallet, PieChart, Lock, Sparkles, Layers, Search, LayoutGrid, Edit2 } from 'lucide-react';
 import { ConfirmModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
-
-
-/* ───── Default Data ───── */
-const DEFAULT_INCOMES: CategoryItem[] = [
-  { id: 'primary', label: '💼 Primary Job', color: '#3b82f6' },
-  { id: 'side_hustle', label: '🚀 Side Hustle', color: '#10b981' },
-  { id: 'investment', label: '📈 Investment', color: '#fbbf24' },
-  { id: 'rental', label: '🏠 Rental Income', color: '#ec4899' },
-  { id: 'other', label: '💰 Other', color: '#94a3b8' },
-];
-
-const DEFAULT_EXPENSES: CategoryItem[] = [
-  { id: 'rent', label: '🏠 Rent / Housing', color: '#ec4899' },
-  { id: 'groceries', label: '🛒 Groceries / Food', color: '#10b981' },
-  { id: 'utilities', label: '🔌 Bills / Utilities', color: '#3b82f6' },
-  { id: 'entertainment', label: '🎬 Fun / Leisure', color: '#8b5cf6' },
-  { id: 'transport', label: '🚗 Transport / Fuel', color: '#06b6d4' },
-  { id: 'emi_car', label: '🚗 EMI - Car', color: '#f59e0b' },
-  { id: 'emi_phone', label: '📱 EMI - Phone', color: '#14b8a6' },
-  { id: 'healthcare', label: '🏥 Medical / Health', color: '#ef4444' },
-  { id: 'education', label: '📚 Study / Kids', color: '#a855f7' },
-  { id: 'other', label: '🛍️ Other Expenses', color: '#94a3b8' },
-];
-
-const DEFAULT_INVESTMENTS: CategoryItem[] = [
-  { id: 'stock', label: '📈 Stocks', color: '#3b82f6' },
-  { id: 'mutual_fund', label: '💼 Mutual Funds', color: '#10b981' },
-  { id: 'fd', label: '🏦 Fixed Deposits', color: '#fbbf24' },
-  { id: 'gold', label: '🏅 Gold / SGB', color: '#f59e0b' },
-  { id: 'ppf', label: '💳 PPF / EPF', color: '#8b5cf6' },
-  { id: 'real_estate', label: '🏠 Real Estate', color: '#ec4899' },
-  { id: 'crypto', label: '🪙 Crypto', color: '#06b6d4' },
-  { id: 'other', label: '🏷️ Other Assets', color: '#94a3b8' },
-];
 
 const COLOR_PALETTE = [
   '#3b82f6', '#10b981', '#ec4899', '#8b5cf6', '#f59e0b',
@@ -68,49 +36,89 @@ export default function CategoriesPage() {
   const [customIncomes, setCustomIncomes] = useState<CategoryItem[]>([]);
   const [customExpenses, setCustomExpenses] = useState<CategoryItem[]>([]);
   const [customInvestments, setCustomInvestments] = useState<CategoryItem[]>([]);
+  
+  // Form State
   const [label, setLabel] = useState('');
   const [color, setColor] = useState(COLOR_PALETTE[0]);
   const [emoji, setEmoji] = useState('🛍️');
+  const [editId, setEditId] = useState<string | null>(null);
+
   const [search, setSearch] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const { success, warning } = useToast();
-
 
   const reload = () => {
     setCustomIncomes(getCustomIncomes());
     setCustomExpenses(getCustomExpenses());
     setCustomInvestments(getCustomInvestments());
   };
+  
   useEffect(() => { reload(); }, []);
+
+  const handleStartEdit = (item: CategoryItem) => {
+    setEditId(item.id);
+    const emojiPart = item.label.split(' ')[0];
+    const labelPart = item.label.split(' ').slice(1).join(' ');
+    setEmoji(emojiPart || '🛍️');
+    setLabel(labelPart || item.label);
+    setColor(item.color || COLOR_PALETTE[0]);
+  };
+
+  const handleCancelEdit = () => {
+    setEditId(null);
+    setLabel('');
+    setEmoji('🛍️');
+    setColor(COLOR_PALETTE[0]);
+  };
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!label.trim()) return;
 
-    // Check unique constraint across defaults and custom categories
-    const isDuplicate = defaults.some(d => d.label.split(' ').slice(1).join(' ').toLowerCase() === label.trim().toLowerCase()) ||
-                        custom.some(c => c.label.split(' ').slice(1).join(' ').toLowerCase() === label.trim().toLowerCase());
-    if (isDuplicate) {
-      warning(`Category "${label.trim()}" already exists in ${typeLabel}s.`);
-      return;
+    const cleanLabel = `${emoji} ${label.trim()}`;
+
+    if (editId) {
+      // Edit Mode
+      let updatedList: CategoryItem[] = [];
+      if (activeTab === 'income') {
+        updatedList = customIncomes.map(c => c.id === editId ? { ...c, label: cleanLabel, color } : c);
+        saveCustomIncomes(updatedList);
+      } else if (activeTab === 'expense') {
+        updatedList = customExpenses.map(c => c.id === editId ? { ...c, label: cleanLabel, color } : c);
+        saveCustomExpenses(updatedList);
+      } else {
+        updatedList = customInvestments.map(c => c.id === editId ? { ...c, label: cleanLabel, color } : c);
+        saveCustomInvestments(updatedList);
+      }
+      setEditId(null);
+      success('Category updated!');
+    } else {
+      // Add Mode (Duplicate check)
+      const isDuplicate = custom.some(c => c.label.split(' ').slice(1).join(' ').toLowerCase() === label.trim().toLowerCase());
+      if (isDuplicate) {
+        warning(`Category "${label.trim()}" already exists in ${typeLabel}s.`);
+        return;
+      }
+
+      const newId = 'custom_' + Date.now();
+      if (activeTab === 'income') {
+        saveCustomIncomes([...customIncomes, { id: newId, label: cleanLabel, color }]);
+      } else if (activeTab === 'expense') {
+        saveCustomExpenses([...customExpenses, { id: newId, label: cleanLabel, color }]);
+      } else {
+        saveCustomInvestments([...customInvestments, { id: newId, label: cleanLabel, color }]);
+      }
+      success('Category added!');
     }
 
-    const newId = 'custom_' + Date.now();
-    const cleanLabel = `${emoji} ${label.trim()}`;
-    if (activeTab === 'income') {
-      saveCustomIncomes([...customIncomes, { id: newId, label: cleanLabel, color }]);
-    } else if (activeTab === 'expense') {
-      saveCustomExpenses([...customExpenses, { id: newId, label: cleanLabel, color }]);
-    } else {
-      saveCustomInvestments([...customInvestments, { id: newId, label: cleanLabel, color }]);
-    }
     setLabel('');
     setEmoji('🛍️');
     reload();
-    success('Category added!');
   };
 
   const handleDelete = (id: string) => setConfirmDeleteId(id);
+  
   const confirmDelete = () => {
     if (!confirmDeleteId) return;
     if (activeTab === 'income') {
@@ -120,11 +128,24 @@ export default function CategoriesPage() {
     } else {
       saveCustomInvestments(customInvestments.filter((i) => i.id !== confirmDeleteId));
     }
+    
+    // Reset edit mode if editing deleted category
+    if (editId === confirmDeleteId) {
+      handleCancelEdit();
+    }
+    
     reload();
     setConfirmDeleteId(null);
     success('Category deleted');
   };
 
+  const confirmReset = () => {
+    resetCategoriesToDefaults();
+    handleCancelEdit();
+    reload();
+    setShowResetConfirm(false);
+    success('All categories reset to defaults!');
+  };
 
   const getActiveData = () => {
     const map: Record<Tab, { defaults: CategoryItem[]; custom: CategoryItem[]; label: string }> = {
@@ -136,14 +157,19 @@ export default function CategoriesPage() {
   };
 
   const { defaults, custom, label: typeLabel } = getActiveData();
-  const allItems = [...defaults.map((d) => ({ ...d, isDefault: true })), ...custom.map((c) => ({ ...c, isDefault: false }))];
+  
+  // Map and flag defaults based on original default IDs
+  const defaultIds = new Set(defaults.map(d => d.id));
+  const allItems = custom.map((c) => ({ ...c, isDefault: defaultIds.has(c.id) }));
+  
   const filtered = search
     ? allItems.filter((i) => i.label.toLowerCase().includes(search.toLowerCase()))
     : allItems;
 
+  const numDefaults = allItems.filter(c => c.isDefault).length;
+  const numCustom = allItems.filter(c => !c.isDefault).length;
 
   const tabConfig = TAB_CONFIG.find((t) => t.key === activeTab)!;
-
 
   return (
     <div className="animate-fade">
@@ -151,10 +177,20 @@ export default function CategoriesPage() {
       <ConfirmModal
         isOpen={!!confirmDeleteId}
         title="Delete Category?"
-        message="Deleting this custom category will not erase its existing entries in your tracker, but they will show without the custom label styling. Are you sure?"
+        message="Deleting this category will not erase its existing entries in your tracker, but they will show without the custom label styling. Are you sure?"
         confirmLabel="Delete Category"
         onConfirm={confirmDelete}
         onCancel={() => setConfirmDeleteId(null)}
+      />
+
+      {/* Reset Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showResetConfirm}
+        title="Reset Categories?"
+        message="This will reset all categories (Incomes, Expenses, Investments) back to their default presets. All your custom changes and categories will be permanently deleted. Do you want to proceed?"
+        confirmLabel="Reset All"
+        onConfirm={confirmReset}
+        onCancel={() => setShowResetConfirm(false)}
       />
 
       {/* ─── Page Header ─── */}
@@ -167,18 +203,16 @@ export default function CategoriesPage() {
         </div>
       </div>
 
-
       {/* ─── Tab Selector with inline counts ─── */}
       <div className="tabs" style={{ marginBottom: '0.75rem' }}>
         {TAB_CONFIG.map(({ key, label: tabLabel, Icon }) => {
-          const d = key === 'expense' ? DEFAULT_EXPENSES : key === 'income' ? DEFAULT_INCOMES : DEFAULT_INVESTMENTS;
           const cu = key === 'expense' ? customExpenses : key === 'income' ? customIncomes : customInvestments;
-          const count = d.length + cu.length;
+          const count = cu.length;
           return (
             <button
               key={key}
               className={`tab-btn${activeTab === key ? ' active' : ''}`}
-              onClick={() => { setActiveTab(key); setSearch(''); }}
+              onClick={() => { setActiveTab(key); setSearch(''); handleCancelEdit(); }}
             >
               <Icon size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
               {tabLabel}
@@ -203,17 +237,16 @@ export default function CategoriesPage() {
         flexWrap: 'wrap',
       }}>
         <Layers size={14} style={{ color: tabConfig.color, flexShrink: 0 }} />
-        <span><strong style={{ color: 'var(--text-primary)' }}>{defaults.length}</strong> defaults</span>
+        <span><strong style={{ color: 'var(--text-primary)' }}>{numDefaults}</strong> defaults</span>
         <span style={{ opacity: 0.3 }}>·</span>
-        <span><strong style={{ color: 'var(--text-primary)' }}>{custom.length}</strong> custom</span>
+        <span><strong style={{ color: 'var(--text-primary)' }}>{numCustom}</strong> custom</span>
         <span style={{ opacity: 0.3 }}>·</span>
-        <span>{defaults.length + custom.length} total {typeLabel.toLowerCase()} categories</span>
+        <span>{allItems.length} total {typeLabel.toLowerCase()} categories</span>
       </div>
-
 
       {/* ─── Main Content: Form + Table ─── */}
       <div className="grid-3">
-        {/* ─── Add Category Card ─── */}
+        {/* ─── Add/Edit Category Card ─── */}
         <div className="card" style={{ height: 'fit-content' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
             <div style={{
@@ -221,11 +254,13 @@ export default function CategoriesPage() {
               background: tabConfig.glow, color: tabConfig.color,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Plus size={16} />
+              {editId ? <Edit2 size={16} /> : <Plus size={16} />}
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1rem' }}>New {typeLabel} Category</h3>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Custom categories sync everywhere</div>
+              <h3 style={{ margin: 0, fontSize: '1rem' }}>{editId ? 'Edit' : 'New'} {typeLabel} Category</h3>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {editId ? 'Modify name, color, and emoji' : 'Custom categories sync everywhere'}
+              </div>
             </div>
           </div>
 
@@ -322,9 +357,20 @@ export default function CategoriesPage() {
               </div>
             )}
 
-            <button type="submit" className="btn btn-primary w-full">
-              <Plus size={15} /> Create Category
-            </button>
+            {editId ? (
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button type="button" className="btn btn-ghost w-full" onClick={handleCancelEdit}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary w-full">
+                  Save Changes
+                </button>
+              </div>
+            ) : (
+              <button type="submit" className="btn btn-primary w-full">
+                <Plus size={15} /> Create Category
+              </button>
+            )}
           </form>
         </div>
 
@@ -342,18 +388,28 @@ export default function CategoriesPage() {
                 {filtered.length}
               </span>
             </div>
-            <div style={{ position: 'relative', minWidth: 200 }}>
-              <Search size={14} style={{
-                position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-                color: 'var(--text-muted)',
-              }} />
-              <input
-                className="input"
-                placeholder="Search categories..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ paddingLeft: '2rem', fontSize: '0.8rem' }}
-              />
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowResetConfirm(true)}
+                style={{ fontSize: '0.75rem', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                title="Reset all categories to system defaults"
+              >
+                Reset Defaults
+              </button>
+              <div style={{ position: 'relative', minWidth: 160 }}>
+                <Search size={14} style={{
+                  position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                }} />
+                <input
+                  className="input"
+                  placeholder="Search..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{ paddingLeft: '2rem', fontSize: '0.8rem' }}
+                />
+              </div>
             </div>
           </div>
 
@@ -376,17 +432,17 @@ export default function CategoriesPage() {
                       <div className="empty-state" style={{ padding: '2rem' }}>
                         <div className="empty-state-icon">🔍</div>
                         <div className="empty-state-title">
-                          {search ? 'No categories match your search' : 'No custom categories yet'}
+                          {search ? 'No categories match your search' : 'No categories found'}
                         </div>
                         <div className="empty-state-sub">
-                          {search ? 'Try a different keyword' : 'Use the form on the left to add your first custom category.'}
+                          {search ? 'Try a different keyword' : 'Create some categories using the left form.'}
                         </div>
                       </div>
                     </td>
                   </tr>
                 ) : (
                   filtered.map((item, idx) => (
-                    <tr key={item.id + idx}>
+                    <tr key={item.id + idx} style={{ background: editId === item.id ? 'rgba(59,130,246,0.05)' : '' }}>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{idx + 1}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -427,17 +483,29 @@ export default function CategoriesPage() {
                         )}
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        {item.isDefault ? (
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Protected</span>
-                        ) : (
+                        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
                           <button
-                            className="btn btn-danger btn-sm btn-icon"
-                            onClick={() => handleDelete(item.id)}
-                            title="Delete category"
+                            className="btn btn-ghost btn-sm btn-icon"
+                            onClick={() => handleStartEdit(item)}
+                            title="Edit category"
+                            style={{ color: 'var(--blue)' }}
                           >
-                            <Trash2 size={14} />
+                            <Edit2 size={13} />
                           </button>
-                        )}
+                          {item.isDefault ? (
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', alignSelf: 'center' }} title="Default categories can't be deleted">
+                              Protected
+                            </span>
+                          ) : (
+                            <button
+                              className="btn btn-danger btn-sm btn-icon"
+                              onClick={() => handleDelete(item.id)}
+                              title="Delete category"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -455,8 +523,8 @@ export default function CategoriesPage() {
           }}>
             <LayoutGrid size={13} />
             <span>
-              {defaults.length} system defaults <span style={{ opacity: 0.4 }}>·</span>{' '}
-              {custom.length} custom categories <span style={{ opacity: 0.4 }}>·</span>{' '}
+              {numDefaults} system defaults <span style={{ opacity: 0.4 }}>·</span>{' '}
+              {numCustom} custom categories <span style={{ opacity: 0.4 }}>·</span>{' '}
               Changes auto-sync across all modules
             </span>
           </div>

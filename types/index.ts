@@ -6,6 +6,7 @@ export interface UserProfile {
   emergencyFundMonths: number;
   currency: string;
   claudeApiKey?: string;
+  claudeModel?: string;
   newsApiKey?: string;
   onboardingComplete: boolean;
 }
@@ -14,7 +15,7 @@ export interface IncomeSource {
   id: string;
   sourceName: string;
   amount: number;
-  type: 'primary' | 'side_hustle' | 'investment' | 'rental' | 'other';
+  type: string;
 }
 
 export interface ExpenseItem {
