@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { verifyPassword, isAuthEnabled, getPasswordHash, updateLastActive, getAuthEmail } from '@/lib/auth';
+import { verifyPassword, getPasswordHash, updateLastActive, getAuthEmail } from '@/lib/auth';
 import { getProfile } from '@/lib/storage';
 import { Zap, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, Mail } from 'lucide-react';
 

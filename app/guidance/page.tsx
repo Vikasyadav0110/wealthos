@@ -3,16 +3,15 @@ import { useEffect, useState } from 'react';
 import { getProfile, getInvestments, getSalaryEntries } from '@/lib/storage';
 import { formatCurrency } from '@/lib/formatters';
 import type { UserProfile, Investment, SalaryEntry } from '@/types';
-import { ShieldCheck, TrendingUp, Zap, Target, Info } from 'lucide-react';
+import { ShieldCheck, Zap, Target, Info } from 'lucide-react';
 
 interface Suggestion {
   type: string; label: string; icon: string; allocation: number; amount: number;
   reason: string; color: string; priority: 'high' | 'medium' | 'low';
 }
 
-function buildSuggestions(profile: UserProfile, savings: number, investments: Investment[], salary: SalaryEntry | null): Suggestion[] {
+function buildSuggestions(profile: UserProfile, savings: number): Suggestion[] {
   const { riskAppetite } = profile;
-  const typeAlloc: Record<string, number> = { conservative: 0, moderate: 0, aggressive: 0 };
 
   const ALLOCATIONS: Record<string, { icon: string; label: string; color: string; alloc: Record<string, number>; reason: string; priority: 'high' | 'medium' | 'low' }[]> = {
     conservative: [
@@ -68,7 +67,7 @@ export default function GuidancePage() {
   if (!profile) return null;
 
   const savings = salary?.savings || 0;
-  const suggestions = buildSuggestions(profile, savings, investments, salary);
+  const suggestions = buildSuggestions(profile, savings);
   const totalInvested = investments.reduce((s, i) => s + i.investedAmount, 0);
   const emergencyTarget = (profile.monthlyExpenses || 0) * (profile.emergencyFundMonths || 6);
   const hasEmergencyFund = totalInvested >= emergencyTarget;
@@ -138,7 +137,7 @@ export default function GuidancePage() {
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <div className="section-header" style={{ marginBottom: '1rem' }}>
           <div>
-            <div className="section-title" style={{ fontSize: '1rem' }}>This Month's Investment Plan</div>
+            <div className="section-title" style={{ fontSize: '1rem' }}>This Month&apos;s Investment Plan</div>
             <div className="section-sub" style={{ fontSize: '0.75rem' }}>How to allocate {formatCurrency(savings)} across asset classes</div>
           </div>
         </div>

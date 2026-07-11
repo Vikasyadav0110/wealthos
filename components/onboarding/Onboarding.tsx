@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { saveProfile } from '@/lib/storage';
 import type { UserProfile } from '@/types';
-import { generateId } from '@/lib/formatters';
+
 import { Zap, User, DollarSign, Shield, Key } from 'lucide-react';
 
 interface Props { onComplete: () => void; }

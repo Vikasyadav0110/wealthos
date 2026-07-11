@@ -94,7 +94,7 @@ export default function Dashboard() {
       <div className="section-header">
         <div>
           <h1>Financial Overview</h1>
-          <div className="section-sub">Hello {profile?.name} 👋 — here's your wealth snapshot</div>
+          <div className="section-sub">Hello {profile?.name} 👋 — here&apos;s your wealth snapshot</div>
         </div>
       </div>
 
@@ -271,7 +271,7 @@ export default function Dashboard() {
       {salaryEntries.length === 0 && investments.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
           <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚀</div>
-          <h2 style={{ marginBottom: '0.5rem' }}>Let's get started!</h2>
+          <h2 style={{ marginBottom: '0.5rem' }}>Let&apos;s get started!</h2>
           <p style={{ marginBottom: '1.5rem' }}>Add your salary and investments to see your complete financial picture.</p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link href="/salary" className="btn btn-primary">💰 Add First Salary</Link>

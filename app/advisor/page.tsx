@@ -89,6 +89,7 @@ export default function AdvisorPage() {
       setMessages(finalMessages);
       saveChatHistory(finalMessages.slice(-30));
     } catch (err) {
+      console.error(err);
       const errMsg: ChatMessage = { id: generateId(), role: 'assistant', content: '❌ Network error. Please check your connection and API key in Settings.', timestamp: new Date().toISOString() };
       setMessages((prev) => [...prev, errMsg]);
     } finally { setLoading(false); }

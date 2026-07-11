@@ -9,7 +9,6 @@ export function calcCompound(params: CompoundParams): CompoundResult[] {
 
   for (let year = 1; year <= years; year++) {
     for (let period = 0; period < compoundingFrequency; period++) {
-      const periodsPerMonth = compoundingFrequency / 12;
       value = value * (1 + r) + monthlyContribution * (12 / compoundingFrequency);
     }
     invested = principal + monthlyContribution * 12 * year;

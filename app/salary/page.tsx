@@ -1,10 +1,10 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getSalaryEntries, saveSalaryEntry, deleteSalaryEntry, getDailyExpenses, getCustomIncomes, saveCustomIncomes, getCustomExpenses, saveCustomExpenses } from '@/lib/storage';
-import { formatCurrency, formatDate, monthLabel, currentMonth, generateId } from '@/lib/formatters';
+import { formatCurrency, monthLabel, currentMonth, generateId } from '@/lib/formatters';
 import type { SalaryEntry, IncomeSource, ExpenseItem } from '@/types';
-import { Plus, Trash2, X, TrendingUp, DollarSign, Receipt, Eye, ChevronRight, Download, Printer } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { Plus, Trash2, X, TrendingUp, DollarSign, Receipt, Eye, Download, Printer } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
 
@@ -90,12 +90,10 @@ export default function SalaryPage() {
   // Selected Entry for Detailed Breakdown Charts
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
 
-  const reload = () => {
+  const reload = useCallback(() => {
     const list = getSalaryEntries();
     setEntries(list);
-    if (list.length > 0 && !selectedEntryId) {
-      setSelectedEntryId(list[0].id);
-    }
+    setSelectedEntryId((prev) => (list.length > 0 && !prev ? list[0].id : prev));
     
     // Load custom categories
     const customExps = getCustomExpenses();
@@ -103,7 +101,7 @@ export default function SalaryPage() {
 
     const customIncs = getCustomIncomes();
     setIncomeTypes([...DEFAULT_INCOME_TYPES, ...customIncs]);
-  };
+  }, []);
 
   const handleExpenseCategoryChange = (rowId: string, val: string) => {
     if (val === '+custom') {
@@ -145,7 +143,7 @@ export default function SalaryPage() {
 
   useEffect(() => {
     reload();
-  }, []);
+  }, [reload]);
 
   const totalIncomes = incomes.reduce((s, i) => s + (i.amount || 0), 0);
   const totalDeductions = pf + tax + otherDeductions;

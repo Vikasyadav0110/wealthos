@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { getInvestments, saveInvestment, deleteInvestment, getCustomInvestments, saveCustomInvestments } from '@/lib/storage';
 import { formatCurrency, formatPercent, formatDate, generateId } from '@/lib/formatters';
 import type { Investment } from '@/types';
-import { Plus, Trash2, Edit2, X, RefreshCw, Download, Printer, Filter } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Download, Printer, Filter } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';

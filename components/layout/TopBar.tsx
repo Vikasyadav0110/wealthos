@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { getProfile } from '@/lib/storage';
 import { Bell, Lock, Sun, Moon } from 'lucide-react';
-import { isAuthEnabled, updateLastActive } from '@/lib/auth';
+import { isAuthEnabled } from '@/lib/auth';
 import { useTheme } from '@/lib/theme';
 
 const TITLES: Record<string, { title: string; sub: string }> = {

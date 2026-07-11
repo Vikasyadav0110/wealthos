@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { formatCurrency } from '@/lib/formatters';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Percent, HelpCircle, ShieldAlert, Sparkles, ChevronRight, Table } from 'lucide-react';
+import { Percent, Sparkles, Table } from 'lucide-react';
 
 export default function LoansPage() {
   const [params, setParams] = useState({

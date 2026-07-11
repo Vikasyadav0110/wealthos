@@ -158,7 +158,7 @@ export default function PasswordModal({ onClose }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="alert alert-info">
               <AlertCircle size={16} />
-              Set an email and password to lock the app when you're away. You'll need these credentials to sign in.
+              Set an email and password to lock the app when you&apos;re away. You&apos;ll need these credentials to sign in.
             </div>
 
             <div className="form-group">
@@ -193,7 +193,7 @@ export default function PasswordModal({ onClose }: Props) {
                 </button>
               </div>
               {confirm && newPass && confirm !== newPass && (
-                <div style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>Passwords don't match</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>Passwords don&apos;t match</div>
               )}
             </div>
 

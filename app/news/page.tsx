@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getProfile } from '@/lib/storage';
 import type { NewsArticle } from '@/types';
 import { RefreshCw, ExternalLink, Bookmark, Search } from 'lucide-react';
@@ -65,16 +65,7 @@ export default function NewsPage() {
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [hasApiKey, setHasApiKey] = useState(false);
 
-  useEffect(() => {
-    const p = getProfile();
-    setHasApiKey(!!p?.newsApiKey);
-    const bm = localStorage.getItem('wealthos_bookmarks');
-    if (bm) setBookmarks(JSON.parse(bm));
-  }, []);
-
-  useEffect(() => { fetchNews(); }, [category]);
-
-  const fetchNews = async (q?: string) => {
+  const fetchNews = useCallback(async (q?: string) => {
     const p = getProfile();
     if (!p?.newsApiKey) {
       // Demo mode: Filter DEMO_ARTICLES locally by active category or search query
@@ -106,7 +97,16 @@ export default function NewsPage() {
       setArticles(enriched.length ? enriched : DEMO_ARTICLES.filter((art) => art.category === category.id));
     } catch { setError('Failed to fetch news. Showing demo data.'); setArticles(DEMO_ARTICLES.filter((art) => art.category === category.id)); }
     finally { setLoading(false); }
-  };
+  }, [category]);
+
+  useEffect(() => {
+    const p = getProfile();
+    setHasApiKey(!!p?.newsApiKey);
+    const bm = localStorage.getItem('wealthos_bookmarks');
+    if (bm) setBookmarks(JSON.parse(bm));
+  }, []);
+
+  useEffect(() => { fetchNews(); }, [fetchNews]);
 
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); if (search.trim()) fetchNews(search); };

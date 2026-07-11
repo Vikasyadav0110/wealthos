@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react';
 import { getDailyExpenses, saveDailyExpense, deleteDailyExpense, getProfile, getCustomExpenses, saveCustomExpenses } from '@/lib/storage';
 import { formatCurrency, generateId } from '@/lib/formatters';
 import type { DailyExpense } from '@/types';
-import { Plus, Trash2, Calendar, Filter, Receipt, DollarSign, Download, Printer } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { Plus, Trash2, Calendar, Filter, Receipt, Download, Printer } from 'lucide-react';
+import { XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
 
@@ -288,7 +288,7 @@ export default function ExpensesPage() {
         <div className="stat-card card-glow-blue stat-card-blue">
           <div className="stat-label">Spent Today</div>
           <div className="stat-value">{formatCurrency(spentToday)}</div>
-          <div className="stat-sub">Today's transactions</div>
+          <div className="stat-sub">Today&apos;s transactions</div>
         </div>
         <div className="stat-card stat-card-gold">
           <div className="stat-label">Spent This Week</div>
@@ -432,7 +432,7 @@ export default function ExpensesPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(79,142,255,0.06)', border: '1px solid rgba(79,142,255,0.18)', borderRadius: 'var(--radius-md)', padding: '0.3rem 0.6rem' }}>
               <Calendar size={13} style={{ color: 'var(--blue-light)', flexShrink: 0 }} />
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Date:</span>
-              <select className="select" style={{ minWidth: 100, padding: '0 0.25rem', fontSize: '0.78rem', border: 'none', background: 'transparent', color: 'var(--text-primary)' }} value={dateFilter} onChange={(e) => handleDateFilter(e.target.value as any)}>
+              <select className="select" style={{ minWidth: 100, padding: '0 0.25rem', fontSize: '0.78rem', border: 'none', background: 'transparent', color: 'var(--text-primary)' }} value={dateFilter} onChange={(e) => handleDateFilter(e.target.value as typeof dateFilter)}>
                 <option value="all">All</option>
                 <option value="today">Today</option>
                 <option value="week">This Week</option>

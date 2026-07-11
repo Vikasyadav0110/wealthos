@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { getProfile, saveProfile } from '@/lib/storage';
 import type { UserProfile } from '@/types';
-import { Key, Shield, Eye, EyeOff, Save, RotateCcw, CheckCircle, Lock, LockOpen, Timer, Download, Upload } from 'lucide-react';
+import { Key, Eye, EyeOff, Save, RotateCcw, CheckCircle, Lock, LockOpen, Timer, Download, Upload } from 'lucide-react';
 import { isAuthEnabled, getLockTimeout, setLockTimeout } from '@/lib/auth';
 import PasswordModal from '@/components/auth/PasswordModal';
 import { useToast } from '@/components/ui/Toast';
@@ -144,7 +144,7 @@ export default function SettingsPage() {
         {/* API Keys */}
         <div className="card">
           <h3 style={{ marginBottom: '0.5rem' }}>🔑 API Keys</h3>
-          <p style={{ marginBottom: '1.25rem', fontSize: '0.85rem' }}>Keys are stored only in your browser's localStorage — never sent to any third party.</p>
+          <p style={{ marginBottom: '1.25rem', fontSize: '0.85rem' }}>Keys are stored only in your browser&apos;s localStorage — never sent to any third party.</p>
 
           <div className="form-group" style={{ marginBottom: '1.25rem' }}>
             <label className="form-label">

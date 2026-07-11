@@ -2,8 +2,7 @@
 import { useState } from 'react';
 import { calcCompound, calcGoalSIP, ruleOf72, calcSIPFinal, calcLumpsumFinal } from '@/lib/compound';
 import { formatCurrency } from '@/lib/formatters';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { TrendingUp, Target, Zap, Calculator } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function CompoundPage() {
   const [tab, setTab] = useState<'compound' | 'sip' | 'goal' | 'r72'>('compound');

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { getProfile } from '@/lib/storage';
 import { formatCurrency } from '@/lib/formatters';
-import { Coins, HelpCircle, CheckCircle, Info, Calculator, ShieldCheck } from 'lucide-react';
+import { Coins, Info, ShieldCheck } from 'lucide-react';
 
 export default function TaxPage() {
   const [params, setParams] = useState({
