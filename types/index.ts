@@ -4,6 +4,7 @@ export interface UserProfile {
   monthlySalary: number;
   monthlyExpenses: number;
   emergencyFundMonths: number;
+  emergencyFundCurrent: number;
   currency: string;
   claudeApiKey?: string;
   claudeModel?: string;
@@ -98,6 +99,17 @@ export interface DailyExpense {
   amount: number;
   description: string;
   createdAt: string;
+  recurringId?: string; // set when auto-generated from a recurring template
+}
+
+// A monthly recurring expense template (rent, EMI, subscription). Each month,
+// one DailyExpense is auto-logged from it on `dayOfMonth`.
+export interface RecurringExpense {
+  id: string;
+  category: string;
+  amount: number;
+  description: string;
+  dayOfMonth: number; // 1-28
 }
 
 export interface Goal {
@@ -110,4 +122,12 @@ export interface Goal {
   createdAt: string;
 }
 
+export interface BankAccount {
+  id: string;
+  name: string;
+  type: 'salary' | 'savings' | 'fd' | 'current';
+  balance: number;
+  purpose: string; // e.g. 'Emergency Fund', 'Monthly Expenses', 'Investments', 'General'
+  color: string;
+}
 

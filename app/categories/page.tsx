@@ -41,6 +41,7 @@ export default function CategoriesPage() {
   const [label, setLabel] = useState('');
   const [color, setColor] = useState(COLOR_PALETTE[0]);
   const [emoji, setEmoji] = useState('🛍️');
+  const [budget, setBudget] = useState(0); // monthly budget (expense categories only)
   const [editId, setEditId] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
@@ -63,6 +64,7 @@ export default function CategoriesPage() {
     setEmoji(emojiPart || '🛍️');
     setLabel(labelPart || item.label);
     setColor(item.color || COLOR_PALETTE[0]);
+    setBudget(item.budget || 0);
   };
 
   const handleCancelEdit = () => {
@@ -70,6 +72,7 @@ export default function CategoriesPage() {
     setLabel('');
     setEmoji('🛍️');
     setColor(COLOR_PALETTE[0]);
+    setBudget(0);
   };
 
   const handleAdd = (e: React.FormEvent) => {
@@ -85,7 +88,7 @@ export default function CategoriesPage() {
         updatedList = customIncomes.map(c => c.id === editId ? { ...c, label: cleanLabel, color } : c);
         saveCustomIncomes(updatedList);
       } else if (activeTab === 'expense') {
-        updatedList = customExpenses.map(c => c.id === editId ? { ...c, label: cleanLabel, color } : c);
+        updatedList = customExpenses.map(c => c.id === editId ? { ...c, label: cleanLabel, color, budget: budget > 0 ? budget : undefined } : c);
         saveCustomExpenses(updatedList);
       } else {
         updatedList = customInvestments.map(c => c.id === editId ? { ...c, label: cleanLabel, color } : c);
@@ -105,7 +108,7 @@ export default function CategoriesPage() {
       if (activeTab === 'income') {
         saveCustomIncomes([...customIncomes, { id: newId, label: cleanLabel, color }]);
       } else if (activeTab === 'expense') {
-        saveCustomExpenses([...customExpenses, { id: newId, label: cleanLabel, color }]);
+        saveCustomExpenses([...customExpenses, { id: newId, label: cleanLabel, color, budget: budget > 0 ? budget : undefined }]);
       } else {
         saveCustomInvestments([...customInvestments, { id: newId, label: cleanLabel, color }]);
       }
@@ -114,6 +117,7 @@ export default function CategoriesPage() {
 
     setLabel('');
     setEmoji('🛍️');
+    setBudget(0);
     reload();
   };
 
@@ -306,6 +310,24 @@ export default function CategoriesPage() {
                 />
               </div>
             </div>
+
+            {/* Monthly budget — expense categories only */}
+            {activeTab === 'expense' && (
+              <div className="form-group">
+                <label className="form-label">Monthly Budget (₹) <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— optional</span></label>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 8000 (0 = no budget)"
+                  value={budget || ''}
+                  onChange={(e) => setBudget(Math.max(0, Number(e.target.value)))}
+                />
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                  Spend vs budget shows on the Daily Expenses page.
+                </div>
+              </div>
+            )}
 
             {/* Color */}
             <div className="form-group">

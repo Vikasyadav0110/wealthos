@@ -1,4 +1,4 @@
-import type { UserProfile, SalaryEntry, Investment, ChatMessage, DailyExpense, Goal } from '@/types';
+import type { UserProfile, SalaryEntry, Investment, ChatMessage, DailyExpense, Goal, BankAccount, RecurringExpense } from '@/types';
 
 const KEYS = {
   profile: 'wealthos_profile',
@@ -11,6 +11,8 @@ const KEYS = {
   customExpenses: 'wealthos_custom_categories', // Matches existing key
   customInvestments: 'wealthos_custom_investment_categories',
   goals: 'wealthos_goals',
+  bankAccounts: 'wealthos_bank_accounts',
+  recurringExpenses: 'wealthos_recurring_expenses',
 };
 
 
@@ -103,8 +105,53 @@ export const deleteDailyExpense = (id: string) => {
   set(KEYS.dailyExpenses, getDailyExpenses().filter((e) => e.id !== id));
 };
 
+// --- Recurring Expenses (monthly templates: rent, EMIs, subscriptions) ---
+export const getRecurringExpenses = (): RecurringExpense[] => get<RecurringExpense[]>(KEYS.recurringExpenses, []);
+export const saveRecurringExpense = (tpl: RecurringExpense) => {
+  const list = getRecurringExpenses();
+  const idx = list.findIndex((t) => t.id === tpl.id);
+  if (idx >= 0) list[idx] = tpl;
+  else list.push(tpl);
+  set(KEYS.recurringExpenses, list);
+};
+export const deleteRecurringExpense = (id: string) => {
+  set(KEYS.recurringExpenses, getRecurringExpenses().filter((t) => t.id !== id));
+};
+
+// Auto-log this month's due recurring expenses (idempotent: one instance per
+// template per month, tracked via recurringId). Returns the created instances.
+export const applyDueRecurringExpenses = (): DailyExpense[] => {
+  if (typeof window === 'undefined') return [];
+  const templates = getRecurringExpenses();
+  if (templates.length === 0) return [];
+  const now = new Date();
+  const month = now.toISOString().slice(0, 7);
+  const today = now.getDate();
+  const existing = getDailyExpenses();
+  const created: DailyExpense[] = [];
+
+  templates.forEach((tpl) => {
+    if (today < tpl.dayOfMonth) return; // not due yet this month
+    const already = existing.some((e) => e.recurringId === tpl.id && e.date.startsWith(month));
+    if (already) return;
+    const date = `${month}-${String(Math.min(tpl.dayOfMonth, 28)).padStart(2, '0')}`;
+    const instance: DailyExpense = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      date,
+      category: tpl.category,
+      amount: tpl.amount,
+      description: tpl.description,
+      createdAt: new Date().toISOString(),
+      recurringId: tpl.id,
+    };
+    saveDailyExpense(instance);
+    created.push(instance);
+  });
+  return created;
+};
+
 // --- Custom Categories ---
-export interface CategoryItem { id: string; label: string; color: string; }
+export interface CategoryItem { id: string; label: string; color: string; budget?: number; }
 
 export const DEFAULT_INCOMES: CategoryItem[] = [
   { id: 'primary', label: '💼 Primary Job', color: '#3b82f6' },
@@ -231,4 +278,6 @@ export const deleteGoal = (id: string) => {
   set(KEYS.goals, getGoals().filter((g) => g.id !== id));
 };
 
-
+// --- Bank Accounts ---
+export const getBankAccounts = (): BankAccount[] => get<BankAccount[]>(KEYS.bankAccounts, []);
+export const saveBankAccounts = (accounts: BankAccount[]) => set(KEYS.bankAccounts, accounts);

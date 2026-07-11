@@ -1,9 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getDailyExpenses, saveDailyExpense, deleteDailyExpense, getProfile, getCustomExpenses, saveCustomExpenses, CategoryItem } from '@/lib/storage';
+import { getDailyExpenses, saveDailyExpense, deleteDailyExpense, getProfile, getCustomExpenses, saveCustomExpenses, CategoryItem, getRecurringExpenses, saveRecurringExpense, deleteRecurringExpense, applyDueRecurringExpenses } from '@/lib/storage';
 import { formatCurrency, generateId, monthLabel } from '@/lib/formatters';
-import type { DailyExpense } from '@/types';
-import { Plus, Trash2, Calendar, Filter, Receipt, Download, Printer } from 'lucide-react';
+import type { DailyExpense, RecurringExpense } from '@/types';
+import { Plus, Trash2, Calendar, Filter, Receipt, Download, Printer, Pencil } from 'lucide-react';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
@@ -19,7 +19,14 @@ export default function ExpensesPage() {
   const [monthlyLimit, setMonthlyLimit] = useState(50000);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showCatInput, setShowCatInput] = useState(false);
-  const { success, warning } = useToast();
+  // Editing an existing transaction (null = adding new)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // Free-text search over descriptions
+  const [searchText, setSearchText] = useState('');
+  // Recurring templates
+  const [recurring, setRecurring] = useState<RecurringExpense[]>([]);
+  const [repeatMonthly, setRepeatMonthly] = useState(false);
+  const { success, warning, info } = useToast();
 
   // New Date filter states
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
@@ -38,30 +45,84 @@ export default function ExpensesPage() {
     
     const list = getCustomExpenses();
     setCategories(list);
+    setRecurring(getRecurringExpenses());
   };
 
   useEffect(() => {
+    // Auto-log any recurring expenses due this month before first render of data
+    const created = applyDueRecurringExpenses();
     reload();
+    if (created.length > 0) {
+      info(`${created.length} recurring expense${created.length > 1 ? 's' : ''} logged automatically`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || Number(amount) <= 0) return;
 
+    const original = editingId ? expenses.find((x) => x.id === editingId) : null;
     const newExpense: DailyExpense = {
-      id: generateId(),
+      id: editingId || generateId(),
       date,
       category,
       amount: Number(amount),
       description: description.trim() || category.toUpperCase(),
-      createdAt: new Date().toISOString(),
+      createdAt: original?.createdAt || new Date().toISOString(),
     };
 
     saveDailyExpense(newExpense);
+
+    // Optionally register a monthly recurring template (new expenses only)
+    if (repeatMonthly && !editingId) {
+      saveRecurringExpense({
+        id: generateId(),
+        category,
+        amount: Number(amount),
+        description: newExpense.description,
+        dayOfMonth: Math.min(Math.max(Number(date.slice(8, 10)) || 1, 1), 28),
+      });
+    }
+
     setAmount('');
     setDescription('');
+    setEditingId(null);
+    setRepeatMonthly(false);
     reload();
-    success('Expense added');
+
+    // Over-budget check for this category (this month) — proactive, at log time
+    const cat = categories.find((c) => c.id === category);
+    const catBudget = cat?.budget ?? 0;
+    if (catBudget > 0 && newExpense.date.startsWith(new Date().toISOString().slice(0, 7))) {
+      const spent = getDailyExpenses()
+        .filter((x) => x.category === category && x.date.startsWith(newExpense.date.slice(0, 7)))
+        .reduce((s, x) => s + x.amount, 0);
+      const catName = cat?.label.split(' ').slice(1).join(' ') || category;
+      if (spent > catBudget) {
+        warning(`${catName} is over budget: ${formatCurrency(spent)} of ${formatCurrency(catBudget)}`);
+        return;
+      } else if (spent >= catBudget * 0.8) {
+        warning(`${catName} is at ${Math.round((spent / catBudget) * 100)}% of its ${formatCurrency(catBudget)} budget`);
+        return;
+      }
+    }
+    success(original ? 'Expense updated' : 'Expense added');
+  };
+
+  const startEdit = (exp: DailyExpense) => {
+    setEditingId(exp.id);
+    setAmount(String(exp.amount));
+    setCategory(exp.category);
+    setDate(exp.date);
+    setDescription(exp.description);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setAmount('');
+    setDescription('');
   };
 
   const handleDelete = (id: string) => setConfirmDeleteId(id);
@@ -118,10 +179,12 @@ export default function ExpensesPage() {
     .filter((e) => e.date.startsWith(currentMonthYear))
     .reduce((s, e) => s + e.amount, 0);
 
-  // Filtered expenses based on category and date filters
+  // Filtered expenses based on category, date, and text-search filters
   const filteredExpenses = expenses.filter((e) => {
     const matchesCategory = filterCategory === 'all' || e.category === filterCategory;
     if (!matchesCategory) return false;
+
+    if (searchText.trim() && !e.description.toLowerCase().includes(searchText.trim().toLowerCase())) return false;
 
     if (dateFilter === 'all') return true;
     if (dateFilter === 'today') return e.date === todayStr;
@@ -159,6 +222,20 @@ export default function ExpensesPage() {
     acc[exp.category] = (acc[exp.category] || 0) + exp.amount;
     return acc;
   }, {} as Record<string, number>);
+
+  // Per-category budget vs actual (this month) — only categories with a budget set
+  const monthSpendByCat = expenses
+    .filter((e) => e.date.startsWith(currentMonthYear))
+    .reduce((acc, e) => { acc[e.category] = (acc[e.category] || 0) + e.amount; return acc; }, {} as Record<string, number>);
+  const budgetRows = categories
+    .filter((c) => (c.budget ?? 0) > 0)
+    .map((c) => {
+      const spent = monthSpendByCat[c.id] || 0;
+      const budget = c.budget || 0;
+      const pct = budget > 0 ? Math.round((spent / budget) * 100) : 0;
+      return { id: c.id, name: c.label.split(' ').slice(1).join(' ') || c.label, color: c.color, spent, budget, pct };
+    })
+    .sort((a, b) => b.pct - a.pct);
 
   const pieData = Object.entries(categorySummary).map(([catId, amount]) => {
     const cat = categories.find((c) => c.id === catId) || { label: '🛍️ Other', color: '#94a3b8' };
@@ -345,10 +422,48 @@ export default function ExpensesPage() {
               <label className="form-label">Description</label>
               <input className="input" placeholder="e.g. Groceries shop, fuel, movies" value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
-            <button className="btn btn-primary w-full" type="submit" style={{ marginTop: '0.5rem' }}>
-              <Receipt size={16} /> Log Expense
-            </button>
+            {!editingId && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={repeatMonthly} onChange={(e) => setRepeatMonthly(e.target.checked)} />
+                Repeat monthly (rent, EMI, subscription…)
+              </label>
+            )}
+
+            {editingId ? (
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button className="btn btn-ghost w-full" type="button" onClick={cancelEdit}>Cancel</button>
+                <button className="btn btn-primary w-full" type="submit">
+                  <Pencil size={15} /> Update Expense
+                </button>
+              </div>
+            ) : (
+              <button className="btn btn-primary w-full" type="submit" style={{ marginTop: '0.5rem' }}>
+                <Receipt size={16} /> Log Expense
+              </button>
+            )}
           </form>
+
+          {/* Recurring templates */}
+          {recurring.length > 0 && (
+            <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.5rem' }}>
+                🔁 Recurring monthly
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {recurring.map((t) => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.78rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {t.description} · <strong style={{ color: 'var(--text-primary)' }}>{formatCurrency(t.amount)}</strong> on day {t.dayOfMonth}
+                    </span>
+                    <button className="btn btn-ghost btn-sm btn-icon" title="Stop recurring"
+                      onClick={() => { deleteRecurringExpense(t.id); reload(); success('Recurring expense removed'); }}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Expenses Trend Chart */}
@@ -420,6 +535,39 @@ export default function ExpensesPage() {
         </div>
       </div>
 
+      {/* Per-category budgets vs actual (this month) */}
+      {budgetRows.length > 0 && (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0 }}>🎯 Category Budgets <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400 }}>(this month)</span></h3>
+            <a href="/categories" style={{ fontSize: '0.8rem', color: 'var(--blue-light)' }}>Set budgets →</a>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+            {budgetRows.map((b) => {
+              const over = b.spent > b.budget;
+              const barColor = over ? 'var(--red)' : b.pct >= 80 ? 'var(--gold)' : 'var(--green)';
+              return (
+                <div key={b.id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.3rem' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 2, background: b.color }} />
+                      <span style={{ color: 'var(--text-secondary)' }}>{b.name}</span>
+                    </span>
+                    <span style={{ color: over ? 'var(--red)' : 'var(--text-primary)', fontWeight: 600 }}>
+                      {formatCurrency(b.spent)} / {formatCurrency(b.budget)}
+                    </span>
+                  </div>
+                  <div style={{ height: 6, background: 'var(--track-bg)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(b.pct, 100)}%`, background: barColor, borderRadius: 3 }} />
+                  </div>
+                  {over && <div style={{ fontSize: '0.7rem', color: 'var(--red)', marginTop: '0.25rem' }}>⚠️ Over by {formatCurrency(b.spent - b.budget)}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* History table */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', gap: '1rem', flexWrap: 'wrap' }}>
@@ -471,6 +619,16 @@ export default function ExpensesPage() {
                 ))}
               </select>
             </div>
+
+            {/* Text search over descriptions */}
+            <input
+              className="input"
+              placeholder="Search descriptions…"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              style={{ width: 170, padding: '0.35rem 0.6rem', fontSize: '0.78rem' }}
+              aria-label="Search transactions"
+            />
           </div>
         </div>
 
@@ -509,9 +667,14 @@ export default function ExpensesPage() {
                     <td style={{ fontWeight: 500 }}>{exp.description}</td>
                     <td style={{ fontWeight: 600, color: 'var(--gold)' }}>{formatCurrency(exp.amount)}</td>
                     <td>
-                      <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDelete(exp.id)} title="Delete Log">
-                        <Trash2 size={14} />
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button className="btn btn-ghost btn-sm btn-icon" onClick={() => startEdit(exp)} title="Edit Log" style={{ color: 'var(--blue)' }}>
+                          <Pencil size={14} />
+                        </button>
+                        <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDelete(exp.id)} title="Delete Log">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
