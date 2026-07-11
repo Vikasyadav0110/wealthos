@@ -4,9 +4,10 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import Onboarding from '@/components/onboarding/Onboarding';
 import LockScreen from '@/components/auth/LockScreen';
-import { getProfile } from '@/lib/storage';
+import { getProfile, STORAGE_ERROR_EVENT } from '@/lib/storage';
 import { isAuthEnabled, isSessionExpired, updateLastActive } from '@/lib/auth';
 import { useTheme } from '@/lib/theme';
+import { useToast } from '@/components/ui/Toast';
 
 // Inline script — runs before React hydration to avoid theme flash
 const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem('wealthos_theme')||'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
@@ -14,8 +15,19 @@ const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem('wealthos_theme
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
   const [locked, setLocked] = useState(false);
+  const { error: toastError } = useToast();
   // Sync data-theme attribute on html element with localStorage on every page
   useTheme();
+
+  // Surface failed localStorage writes (e.g. quota exceeded) so data-loss isn't silent
+  useEffect(() => {
+    const onStorageError = (e: Event) => {
+      const detail = (e as CustomEvent<{ message: string }>).detail;
+      toastError(detail?.message || 'Could not save your change.');
+    };
+    window.addEventListener(STORAGE_ERROR_EVENT, onStorageError);
+    return () => window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
+  }, [toastError]);
 
   const checkLock = useCallback(() => {
     if (isAuthEnabled() && isSessionExpired()) {

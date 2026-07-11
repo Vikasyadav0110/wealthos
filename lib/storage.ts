@@ -24,9 +24,23 @@ function get<T>(key: string, fallback: T): T {
   }
 }
 
+// Fired when a localStorage write fails (e.g. quota exceeded). The UI layer
+// (AppShell) listens and surfaces a toast so data-loss is never silent.
+export const STORAGE_ERROR_EVENT = 'wealthos:storage-error';
+
 function set<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    const isQuota =
+      err instanceof DOMException &&
+      (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    const message = isQuota
+      ? 'Storage is full — this change was not saved. Export a backup and clear old data in Settings.'
+      : 'Could not save your change. Please try again.';
+    window.dispatchEvent(new CustomEvent(STORAGE_ERROR_EVENT, { detail: { message, key } }));
+  }
 }
 
 // --- Profile ---
