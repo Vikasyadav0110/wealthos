@@ -433,7 +433,7 @@ export default function SalaryPage() {
       {chartData.length > 0 && (
         <div className="grid-3" style={{ marginBottom: '1.5rem' }}>
           {/* Timeline History */}
-          <div className="card" style={{ gridColumn: 'span 2' }}>
+          <div className="card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
               <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>
                 <TrendingUp size={16} style={{ display: 'inline', marginRight: '0.5rem', color: 'var(--blue)' }} />
@@ -451,7 +451,7 @@ export default function SalaryPage() {
                 <option value={0}>All months</option>
               </select>
             </div>
-            <div style={{ height: 220 }}>
+            <div style={{ flex: 1, minHeight: 220 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} barSize={20}>
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
