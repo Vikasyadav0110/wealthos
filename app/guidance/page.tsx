@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { getProfile, getInvestments, getSalaryEntries } from '@/lib/storage';
+import Link from 'next/link';
+import { getProfile, getInvestments, getSalaryEntries, getGoals } from '@/lib/storage';
 import { formatCurrency } from '@/lib/formatters';
-import type { UserProfile, Investment, SalaryEntry } from '@/types';
+import { requiredSIP, defaultRateFor } from '@/lib/planning';
+import type { UserProfile, Investment, SalaryEntry, Goal } from '@/types';
 import { ShieldCheck, Zap, Target, Info } from 'lucide-react';
 
 interface Suggestion {
@@ -56,12 +58,14 @@ export default function GuidancePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [salary, setSalary] = useState<SalaryEntry | null>(null);
+  const [goals, setGoals] = useState<Goal[]>([]);
 
   useEffect(() => {
     setProfile(getProfile());
     setInvestments(getInvestments());
     const entries = getSalaryEntries();
     setSalary(entries[0] || null);
+    setGoals(getGoals());
   }, []);
 
   if (!profile) return null;
@@ -168,6 +172,44 @@ export default function GuidancePage() {
           )}
         </div>
       </div>
+
+      {/* Goal-linked guidance */}
+      {goals.length > 0 && (() => {
+        const rate = defaultRateFor(profile.riskAppetite);
+        const rows = goals.filter((g) => g.currentAmount < g.targetAmount).map((g) => {
+          const months = Math.max(Math.ceil((new Date(g.targetDate).getTime() - Date.now()) / (30 * 24 * 3600 * 1000)), 1);
+          const sip = requiredSIP(g.targetAmount, g.currentAmount, months / 12, rate);
+          return { ...g, sip };
+        });
+        const totalSip = rows.reduce((s, r) => s + r.sip, 0);
+        if (rows.length === 0) return null;
+        return (
+          <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>🎯 Fund Your Goals</div>
+              <Link href="/goals" style={{ fontSize: '0.8rem', color: 'var(--blue-light)' }}>Manage goals →</Link>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              {rows.map((g) => {
+                const pct = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
+                return (
+                  <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{g.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({pct}% funded)</span></span>
+                    <span style={{ fontSize: '0.85rem' }}>Invest <strong style={{ color: 'var(--blue)' }}>{formatCurrency(g.sip)}/mo</strong></span>
+                  </div>
+                );
+              })}
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '0.5rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                <span>Total needed for all goals</span>
+                <span style={{ color: totalSip > savings ? 'var(--red)' : 'var(--green)' }}>{formatCurrency(totalSip)}/mo</span>
+              </div>
+              {totalSip > savings && savings > 0 && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>⚠️ This exceeds your {formatCurrency(savings)}/mo surplus — extend timelines or increase savings.</div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Principles */}
       <div className="card">

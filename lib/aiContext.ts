@@ -1,7 +1,8 @@
 import type { UserProfile, SalaryEntry, Investment } from '@/types';
 import { formatFullCurrency, formatPercent } from './formatters';
-import { getDailyExpenses } from './storage';
+import { getDailyExpenses, getGoals, getBankAccounts } from './storage';
 import { computeTakeHome } from './income';
+import { healthBreakdown } from './health';
 
 export function buildFinancialContext(
   profile: UserProfile,
@@ -72,6 +73,38 @@ ${expensesList}
 - Savings Rate: ${savingsRate}%`;
   }
 
+  // Goals
+  const goals = getGoals();
+  const goalsStr = goals.length > 0
+    ? goals.map((g) => {
+        const pct = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
+        return `  - ${g.name} (${g.category}): ₹${g.currentAmount.toLocaleString('en-IN')} of ₹${g.targetAmount.toLocaleString('en-IN')} (${pct}%) by ${g.targetDate}`;
+      }).join('\n')
+    : '  - No goals set yet';
+
+  // Emergency fund
+  const emergencyTarget = (profile.monthlyExpenses || 0) * (profile.emergencyFundMonths || 6);
+  const emergencyCurrent = profile.emergencyFundCurrent || 0;
+  const emergencyPct = emergencyTarget > 0 ? Math.round((emergencyCurrent / emergencyTarget) * 100) : 0;
+  const emergencyStr = `- Emergency Fund: ₹${emergencyCurrent.toLocaleString('en-IN')} of ₹${emergencyTarget.toLocaleString('en-IN')} target (${emergencyPct}% — ${profile.emergencyFundMonths || 6} months of expenses)`;
+
+  // Bank accounts
+  const banks = getBankAccounts();
+  const banksStr = banks.length > 0
+    ? banks.map((b) => `  - ${b.name || b.type} (${b.purpose}): ₹${b.balance.toLocaleString('en-IN')}`).join('\n')
+    : '  - No bank accounts added';
+  const totalBankBalance = banks.reduce((s, b) => s + b.balance, 0);
+
+  // Financial health score (same weighting the dashboard uses)
+  const diversification = Math.min(new Set(investments.map((i) => i.type)).size, 5);
+  const health = healthBreakdown({
+    savingsRate,
+    hasEmergencyFund: emergencyCurrent >= emergencyTarget && emergencyTarget > 0,
+    diversificationScore: diversification,
+    debtRatio: 0,
+  });
+  const healthStr = `- Financial Health Score: ${health.score}/100 (${health.label})\n${health.factors.map((f) => `  * ${f.label}: ${f.score}/${f.max}${f.tip ? ` — ${f.tip}` : ''}`).join('\n')}`;
+
   const newsContext = recentNews && recentNews.length > 0
     ? `\nRECENT MARKET NEWS:\n${recentNews.slice(0, 5).map((h, i) => `  ${i + 1}. ${h}`).join('\n')}`
     : '';
@@ -99,7 +132,19 @@ ${portfolioBreakdown || '  - No investments added yet'}
 
 Asset Allocation:
 ${allocationStr || '  - No investments added yet'}
+
+FINANCIAL GOALS:
+${goalsStr}
+
+SAFETY NET:
+${emergencyStr}
+- Total Bank Balance: ₹${totalBankBalance.toLocaleString('en-IN')}
+Bank Accounts:
+${banksStr}
+
+FINANCIAL HEALTH:
+${healthStr}
 ${newsContext}
 
-Always respond as a knowledgeable Indian financial advisor familiar with NSE, BSE, SEBI regulations, mutual funds, SIP, PPF, ELSS, and Indian tax laws.`;
+When giving advice, factor in the user's goals (prioritize funding them), their emergency-fund status (a shortfall should usually be addressed before new investing), and their bank balances. Always respond as a knowledgeable Indian financial advisor familiar with NSE, BSE, SEBI regulations, mutual funds, SIP, PPF, ELSS, and Indian tax laws.`;
 }

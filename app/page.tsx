@@ -1,10 +1,12 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { getProfile, getSalaryEntries, getInvestments } from '@/lib/storage';
-import { formatCurrency, formatPercent, calcHealthScore, getHealthLabel, monthLabel } from '@/lib/formatters';
+import { getProfile, getSalaryEntries, getInvestments, getGoals } from '@/lib/storage';
+import { buildInsights } from '@/lib/insights';
+import { formatCurrency, formatPercent, monthLabel } from '@/lib/formatters';
+import { healthBreakdown } from '@/lib/health';
 import { computeTakeHome } from '@/lib/income';
-import type { UserProfile, SalaryEntry, Investment } from '@/types';
+import type { UserProfile, SalaryEntry, Investment, Goal } from '@/types';
 import { Wallet, TrendingUp, PieChart, Bot, ArrowRight, AlertTriangle, CheckCircle, Newspaper, Compass } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
@@ -34,6 +36,7 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [salaryEntries, setSalaryEntries] = useState<SalaryEntry[]>([]);
   const [investments, setInvestments] = useState<Investment[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [loaded, setLoaded] = useState(false);
   // How many recent months the trend chart shows (0 = all)
   const [chartWindow, setChartWindow] = useState<number>(6);
@@ -42,6 +45,7 @@ export default function Dashboard() {
     setProfile(getProfile());
     setSalaryEntries(getSalaryEntries());
     setInvestments(getInvestments());
+    setGoals(getGoals());
     setLoaded(true);
   }, []);
 
@@ -57,13 +61,14 @@ export default function Dashboard() {
   const typeCount = [...new Set(investments.map((i) => i.type))].length;
   const emergencyTarget = (profile?.monthlyExpenses || 0) * (profile?.emergencyFundMonths || 6);
   const hasEmergencyFund = totalCurrent >= emergencyTarget;
-  const healthScore = calcHealthScore({
+  const health = healthBreakdown({
     savingsRate,
     hasEmergencyFund,
     diversificationScore: Math.min(typeCount, 5),
     debtRatio: 0,
   });
-  const { label: healthLabel, color: healthColor } = getHealthLabel(healthScore);
+  const healthScore = health.score;
+  const { label: healthLabel, color: healthColor } = { label: health.label, color: health.color };
 
   // Count-up values
   const animSalary = useCountUp(takeHome);
@@ -72,12 +77,20 @@ export default function Dashboard() {
   const animHealth = useCountUp(healthScore, 1200);
 
   const orderedEntries = [...salaryEntries].reverse();
-  const chartData = (chartWindow > 0 ? orderedEntries.slice(-chartWindow) : orderedEntries).map((e) => ({
+  const windowedEntries = chartWindow > 0 ? orderedEntries.slice(-chartWindow) : orderedEntries;
+  const rawChartData = windowedEntries.map((e) => ({
     month: monthLabel(e.month),
     salary: e.grossSalary,
     savings: e.savings,
     expenses: e.expenses,
   }));
+  // Pad with a zero-value preceding month when only 1 entry so the area chart can render lines
+  const chartData = rawChartData.length === 1
+    ? [
+        { month: '', salary: 0, savings: 0, expenses: 0 },
+        ...rawChartData,
+      ]
+    : rawChartData;
 
   const quickActions = [
     { href: '/salary', icon: Wallet, label: 'Add Salary', color: 'var(--blue)', bg: 'var(--blue-glow)' },
@@ -88,11 +101,7 @@ export default function Dashboard() {
     { href: '/news', icon: Newspaper, label: 'Market News', color: 'var(--blue)', bg: 'var(--blue-glow)' },
   ];
 
-  const alerts: { type: 'warning' | 'success' | 'info'; msg: string }[] = [];
-  if (savingsRate < 20 && latest) alerts.push({ type: 'warning', msg: `Your savings rate is ${savingsRate}%. Aim for at least 20%.` });
-  if (!hasEmergencyFund && emergencyTarget > 0) alerts.push({ type: 'warning', msg: `Emergency fund incomplete. Target: ${formatCurrency(emergencyTarget)}` });
-  if (savingsRate >= 30) alerts.push({ type: 'success', msg: `Great job! You're saving ${savingsRate}% of your income.` });
-  if (totalPL > 0) alerts.push({ type: 'success', msg: `Your portfolio is up ${formatCurrency(totalPL)} (${formatPercent(plPct)})` });
+  const insights = buildInsights({ profile, entries: salaryEntries, investments, goals });
 
   return (
     <div className="animate-fade">
@@ -104,13 +113,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Alerts */}
-      {alerts.length > 0 && (
+      {/* Proactive insights */}
+      {insights.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
-          {alerts.map((a, i) => (
-            <div key={i} className={`alert alert-${a.type === 'warning' ? 'warning' : 'success'}`}>
-              {a.type === 'warning' ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
-              {a.msg}
+          {insights.map((a) => (
+            <div key={a.id} className={`alert alert-${a.level === 'warning' ? 'warning' : a.level === 'success' ? 'success' : 'info'}`}
+              style={{ alignItems: 'flex-start' }}>
+              {a.level === 'warning' ? <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : a.level === 'success' ? <CheckCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <ArrowRight size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
+              <span><strong>{a.title}</strong> — {a.detail}</span>
             </div>
           ))}
         </div>
@@ -155,6 +165,37 @@ export default function Dashboard() {
           <div className="stat-sub" style={{ color: healthColor }}>{healthLabel}</div>
         </div>
       </div>
+
+      {/* Health Score breakdown — the "why" + how to improve */}
+      {latest && (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>
+              <CheckCircle size={16} style={{ display: 'inline', marginRight: '0.5rem', color: healthColor }} />
+              Health Score Breakdown
+            </div>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: healthColor }}>{healthScore}/100 · {healthLabel}</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+            {health.factors.map((f) => {
+              const pct = f.max > 0 ? Math.round((f.score / f.max) * 100) : 0;
+              const barColor = pct >= 80 ? 'var(--green)' : pct >= 40 ? 'var(--gold)' : 'var(--red)';
+              return (
+                <div key={f.key}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.35rem' }}>
+                    <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{f.label}</span>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{f.score}/{f.max}</span>
+                  </div>
+                  <div style={{ height: 6, background: 'var(--track-bg)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3 }} />
+                  </div>
+                  {f.tip && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>{f.tip}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Chart + Quick Actions */}
       <div className="grid-2" style={{ marginBottom: '1.5rem' }}>
@@ -201,8 +242,8 @@ export default function Dashboard() {
                     wrapperStyle={{ fontSize: '0.75rem', paddingTop: '0.75rem' }}
                     formatter={(value) => <span style={{ color: 'var(--text-secondary)' }}>{value}</span>}
                   />
-                  <Area type="monotone" dataKey="salary" stroke="var(--blue)" fill="url(#salaryGrad)" strokeWidth={2} name="Salary" />
-                  <Area type="monotone" dataKey="savings" stroke="var(--green)" fill="url(#savingsGrad)" strokeWidth={2} name="Savings" />
+                  <Area type="monotone" dataKey="salary" stroke="var(--blue)" fill="url(#salaryGrad)" strokeWidth={2} name="Salary" dot={{ r: 4, fill: 'var(--blue)' }} activeDot={{ r: 6 }} />
+                  <Area type="monotone" dataKey="savings" stroke="var(--green)" fill="url(#savingsGrad)" strokeWidth={2} name="Savings" dot={{ r: 4, fill: 'var(--green)' }} activeDot={{ r: 6 }} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

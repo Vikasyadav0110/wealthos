@@ -198,7 +198,7 @@ function AdvisorContent() {
 
         {/* Quick Prompts */}
         <div className="chat-quick-prompts">
-          {QUICK_PROMPTS.slice(0, 3).map((p) => (
+          {QUICK_PROMPTS.map((p) => (
             <button key={p} className="quick-prompt-btn" onClick={() => sendMessage(p)} disabled={loading}>{p}</button>
           ))}
         </div>
