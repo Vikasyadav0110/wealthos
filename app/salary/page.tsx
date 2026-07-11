@@ -4,7 +4,7 @@ import { getSalaryEntries, saveSalaryEntry, deleteSalaryEntry, getDailyExpenses,
 import { formatCurrency, monthLabel, currentMonth, generateId } from '@/lib/formatters';
 import { computeTakeHome, computeIncomeBreakdown } from '@/lib/income';
 import type { SalaryEntry, IncomeSource, ExpenseItem } from '@/types';
-import { Plus, Trash2, X, TrendingUp, DollarSign, Receipt, Eye, Download, Printer } from 'lucide-react';
+import { Plus, Trash2, X, TrendingUp, DollarSign, Receipt, Eye, Download, Printer, ChevronDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
@@ -22,6 +22,93 @@ const EMPTY_EXPENSE = (): ExpenseItem => ({
   amount: 0,
   notes: ''
 });
+
+// Simplified cash-flow "Sankey": income sources → in-hand (after deductions)
+// → expenses / savings. Node heights and SVG ribbon widths are proportional to
+// amount. Pure CSS/SVG — no charting dependency.
+function CashFlow({ incomes, deductions, takeHome, expenses, savings }: {
+  incomes: { name: string; value: number; color: string }[];
+  deductions: number;
+  takeHome: number;
+  expenses: number;
+  savings: number;
+}) {
+  const H = 200;
+  const gross = incomes.reduce((s, i) => s + i.value, 0);
+  const scaleRef = Math.max(gross, 1);
+  const px = (v: number) => Math.max((v / scaleRef) * H, v > 0 ? 3 : 0); // amount → pixels
+
+  // Left column: income sources, stacked. Middle: in-hand + deductions. Right: expenses + savings.
+  const colX = { left: 12, mid: 200, right: 388 };
+  const nodeW = 16, width = 460;
+
+  // Stack helper: returns [{y, h, ...item}] centered vertically.
+  const stack = <T extends { value: number }>(items: T[]) => {
+    const totalH = items.reduce((s, i) => s + px(i.value), 0) + (items.length - 1) * 4;
+    let y = (H - totalH) / 2;
+    return items.map((it) => { const h = px(it.value); const seg = { y, h, item: it }; y += h + 4; return seg; });
+  };
+
+  const leftNodes = stack(incomes);
+  const midItems = [
+    { label: 'In-hand', value: takeHome, color: 'var(--blue)' },
+    ...(deductions > 0 ? [{ label: 'Deductions', value: deductions, color: 'var(--red)' }] : []),
+  ];
+  const midNodes = stack(midItems);
+  const rightItems = [
+    ...(savings > 0 ? [{ label: 'Savings', value: savings, color: 'var(--green)' }] : []),
+    ...(expenses > 0 ? [{ label: 'Expenses', value: expenses, color: 'var(--gold)' }] : []),
+  ];
+  const rightNodes = stack(rightItems);
+  const inHandNode = midNodes.find((n) => n.item.label === 'In-hand');
+
+  const ribbon = (x1: number, y1: number, x2: number, y2: number, w: number, color: string, key: string) => {
+    const midX = (x1 + x2) / 2;
+    return (
+      <path key={key}
+        d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+        stroke={color} strokeWidth={Math.max(w, 2)} fill="none" opacity={0.28} strokeLinecap="butt" />
+    );
+  };
+
+  if (gross <= 0) return <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No income to chart for this month.</div>;
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <svg width={width} height={H} style={{ minWidth: width }}>
+        {/* ribbons: each income source → in-hand node */}
+        {inHandNode && leftNodes.map((n, i) =>
+          ribbon(colX.left + nodeW, n.y + n.h / 2, colX.mid, inHandNode.y + inHandNode.h / 2, n.h, n.item.color, 'lr' + i)
+        )}
+        {/* in-hand → each right node */}
+        {inHandNode && rightNodes.map((n, i) =>
+          ribbon(colX.mid + nodeW, inHandNode.y + inHandNode.h / 2, colX.right, n.y + n.h / 2, n.h, n.item.color, 'rr' + i)
+        )}
+        {/* left nodes */}
+        {leftNodes.map((n, i) => (
+          <g key={'ln' + i}>
+            <rect x={colX.left} y={n.y} width={nodeW} height={n.h} rx={3} fill={n.item.color} />
+            <text x={colX.left + nodeW + 6} y={n.y + n.h / 2} dominantBaseline="middle" fontSize={10} fill="var(--text-secondary)">{n.item.name}</text>
+          </g>
+        ))}
+        {/* mid nodes */}
+        {midNodes.map((n, i) => (
+          <g key={'mn' + i}>
+            <rect x={colX.mid} y={n.y} width={nodeW} height={n.h} rx={3} fill={n.item.color} />
+            <text x={colX.mid + nodeW + 6} y={n.y + n.h / 2} dominantBaseline="middle" fontSize={10} fill="var(--text-secondary)">{n.item.label}</text>
+          </g>
+        ))}
+        {/* right nodes */}
+        {rightNodes.map((n, i) => (
+          <g key={'rn' + i}>
+            <rect x={colX.right} y={n.y} width={nodeW} height={n.h} rx={3} fill={n.item.color} />
+            <text x={colX.right - 6} y={n.y + n.h / 2} dominantBaseline="middle" textAnchor="end" fontSize={10} fill="var(--text-secondary)">{n.item.label}</text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
 
 export default function SalaryPage() {
   const [entries, setEntries] = useState<SalaryEntry[]>([]);
@@ -50,6 +137,10 @@ export default function SalaryPage() {
 
   // Selected Entry for Detailed Breakdown Charts
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  // Which timeline month card is expanded
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Which series the combined trend chart shows
+  const [trendSeries, setTrendSeries] = useState<{ income: boolean; savings: boolean; expenses: boolean }>({ income: true, savings: true, expenses: true });
 
   const reload = useCallback(() => {
     const list = getSalaryEntries();
@@ -363,6 +454,32 @@ export default function SalaryPage() {
     : 0;
   const totalSaved = entries.reduce((s, e) => s + e.savings, 0);
 
+  // ── Hero (selected/latest month) ──
+  const heroTakeHome = activeEntry ? computeTakeHome(activeEntry) : 0;
+  const heroSavingsRate = heroTakeHome > 0 && activeEntry ? Math.round((activeEntry.savings / heroTakeHome) * 100) : 0;
+  const heroTopExpense = activeExpensesData.slice().sort((a, b) => b.value - a.value)[0] || null;
+  // Savings gauge geometry: a 270° arc, filled to the savings rate.
+  const GAUGE = { r: 46, stroke: 9, sweep: 270 };
+  const gaugeCirc = 2 * Math.PI * GAUGE.r;
+  const gaugeArc = (GAUGE.sweep / 360) * gaugeCirc;
+  const gaugeFill = Math.min(heroSavingsRate, 100) / 100 * gaugeArc;
+  const gaugeColor = heroSavingsRate >= 20 ? 'var(--green)' : 'var(--gold)';
+
+  // Per-entry savings rate over take-home (used by timeline cards)
+  const entryRate = (e: SalaryEntry) => { const th = computeTakeHome(e); return th > 0 ? Math.round((e.savings / th) * 100) : 0; };
+
+  // Income sources for one entry, with resolved colors (for the cash-flow diagram)
+  const allTimeIncomeDataForEntry = (e: SalaryEntry) => {
+    const rows = e.incomes && e.incomes.length > 0
+      ? e.incomes
+      : [{ id: 'def', sourceName: 'Primary Salary', amount: e.grossSalary, type: 'primary' }];
+    return rows.filter((r) => r.amount > 0).map((r) => ({
+      name: (r.sourceName || 'Primary Salary').trim() || 'Income',
+      value: r.amount,
+      color: incomeTypes.find((c) => c.id === r.type)?.color || '#3b82f6',
+    }));
+  };
+
   return (
     <div className="animate-fade">
       {/* Dialogs */}
@@ -401,77 +518,131 @@ export default function SalaryPage() {
         <button className="btn btn-primary" onClick={openAdd}><Plus size={16} /> Add Monthly Cash Flow</button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
-        <div className="stat-card stat-card-blue">
-          <div className="stat-label">Total Income (Latest)</div>
-          <div className="stat-value">{entries[0] ? formatCurrency(computeTakeHome(entries[0])) : '—'}</div>
-          <div className="stat-sub">{entries[0] ? `In-hand · Gross ${formatCurrency(entries[0].grossSalary)}` : 'No data'}</div>
-        </div>
-        <div className="stat-card stat-card-green">
-          <div className="stat-label">Avg Savings Rate</div>
-          <div className="stat-value" style={{ color: avgSavingsRate >= 20 ? 'var(--green)' : 'var(--gold)' }}>
-            {avgSavingsRate}%
+      {/* ── Hero: this / selected month ── */}
+      {activeEntry && (
+        <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Savings gauge */}
+          <div style={{ position: 'relative', width: 120, height: 120, flexShrink: 0 }}>
+            <svg width={120} height={120} style={{ transform: 'rotate(135deg)' }}>
+              <circle cx={60} cy={60} r={GAUGE.r} fill="none" stroke="var(--track-bg)" strokeWidth={GAUGE.stroke}
+                strokeDasharray={`${gaugeArc} ${gaugeCirc}`} strokeLinecap="round" />
+              <circle cx={60} cy={60} r={GAUGE.r} fill="none" stroke={gaugeColor} strokeWidth={GAUGE.stroke}
+                strokeDasharray={`${gaugeFill} ${gaugeCirc}`} strokeLinecap="round" style={{ transition: 'stroke-dasharray 0.5s ease' }} />
+            </svg>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: gaugeColor }}>{heroSavingsRate}%</div>
+              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>saved</div>
+            </div>
           </div>
-          <div className="stat-sub">{avgSavingsRate >= 20 ? '✅ On track' : '⚠️ Aim for 20%+'}</div>
-        </div>
-        <div className="stat-card stat-card-gold">
-          <div className="stat-label">Total Saved</div>
-          <div className="stat-value gradient-gold">{formatCurrency(totalSaved)}</div>
-          <div className="stat-sub">Across {entries.length} months</div>
-        </div>
-        <div className="stat-card stat-card-red">
-          <div className="stat-label">Total Expenses (Latest)</div>
-          <div className="stat-value" style={{ color: 'var(--gold)' }}>
-            {entries[0] ? formatCurrency(entries[0].expenses) : '—'}
+
+          {/* In-hand headline */}
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              In-hand income · {monthLabel(activeEntry.month)}
+            </div>
+            <div style={{ fontSize: '2.25rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1, margin: '0.15rem 0' }}>
+              {formatCurrency(heroTakeHome)}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Gross {formatCurrency(activeEntry.grossSalary)}
+              {heroSavingsRate < 20 && <span style={{ color: 'var(--gold)', marginLeft: '0.5rem' }}>· aim for 20%+ savings</span>}
+              {heroSavingsRate >= 20 && <span style={{ color: 'var(--green)', marginLeft: '0.5rem' }}>· on track ✅</span>}
+            </div>
           </div>
-          <div className="stat-sub">Net take-home: {entries[0] ? formatCurrency(computeTakeHome(entries[0])) : '—'}</div>
+
+          {/* Tiles */}
+          <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Saved</div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--green)' }}>{formatCurrency(activeEntry.savings)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Expenses</div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--gold)' }}>{formatCurrency(activeEntry.expenses)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Top expense</div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>{heroTopExpense ? heroTopExpense.name : '—'}</div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Slim KPI strip */}
+      {entries.length > 0 && (
+        <div className="card-sm" style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', marginBottom: '1.5rem', padding: '0.75rem 1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: 700, color: avgSavingsRate >= 20 ? 'var(--green)' : 'var(--gold)' }}>{avgSavingsRate}%</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>avg savings rate</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{formatCurrency(totalSaved)}</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>total saved</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{entries.length}</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>months tracked</span>
+          </div>
+        </div>
+      )}
 
       {/* Charts Section */}
       {chartData.length > 0 && (
         <div className="grid-3" style={{ marginBottom: '1.5rem' }}>
-          {/* Timeline History */}
+          {/* Trend + cash-flow (left, spans 2) */}
           <div className="card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
               <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>
                 <TrendingUp size={16} style={{ display: 'inline', marginRight: '0.5rem', color: 'var(--blue)' }} />
-                Monthly Budget History
+                Trend
               </div>
-              <select
-                className="input"
-                value={chartWindow}
-                onChange={(e) => setChartWindow(Number(e.target.value))}
-                style={{ width: 'auto', fontSize: '0.8rem', padding: '0.35rem 0.5rem' }}
-                aria-label="Chart month range"
-              >
-                <option value={6}>Last 6 months</option>
-                <option value={12}>Last 12 months</option>
-                <option value={0}>All months</option>
-              </select>
+              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Series toggles */}
+                {([['income', 'var(--blue)', 'Income'], ['savings', 'var(--green)', 'Savings'], ['expenses', 'var(--gold)', 'Expenses']] as const).map(([key, color, label]) => (
+                  <button key={key} onClick={() => setTrendSeries((s) => ({ ...s, [key]: !s[key] }))}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', padding: '0.2rem 0.5rem', borderRadius: 6, cursor: 'pointer',
+                      border: '1px solid var(--border)', background: trendSeries[key] ? 'var(--bg-elevated)' : 'transparent', opacity: trendSeries[key] ? 1 : 0.45 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 2, background: color }} /> {label}
+                  </button>
+                ))}
+                <select className="input" value={chartWindow} onChange={(e) => setChartWindow(Number(e.target.value))}
+                  style={{ width: 'auto', fontSize: '0.78rem', padding: '0.3rem 0.5rem' }} aria-label="Chart month range">
+                  <option value={6}>Last 6</option>
+                  <option value={12}>Last 12</option>
+                  <option value={0}>All</option>
+                </select>
+              </div>
             </div>
-            <div style={{ flex: 1, minHeight: 220 }}>
+            <div style={{ minHeight: 200, height: 220 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} barSize={20}>
+                <BarChart data={chartData} barSize={18}>
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false}
                     tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
                   <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
                     formatter={(v) => [typeof v === 'number' ? `₹${(v as number).toLocaleString('en-IN')}` : v, '']} />
-                  <Bar dataKey="salary" fill="var(--blue)" radius={[4, 4, 0, 0]} name="Total Income" />
-                  <Bar dataKey="savings" fill="var(--green)" radius={[4, 4, 0, 0]} name="Savings" />
-                  <Bar dataKey="expenses" fill="var(--gold)" radius={[4, 4, 0, 0]} name="Expenses" opacity={0.7} />
+                  {trendSeries.income && <Bar dataKey="salary" fill="var(--blue)" radius={[4, 4, 0, 0]} name="Income" />}
+                  {trendSeries.savings && <Bar dataKey="savings" fill="var(--green)" radius={[4, 4, 0, 0]} name="Savings" />}
+                  {trendSeries.expenses && <Bar dataKey="expenses" fill="var(--gold)" radius={[4, 4, 0, 0]} name="Expenses" opacity={0.8} />}
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div style={{ display: 'flex', gap: '1.5rem', justifyContent: 'center', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {[['var(--blue)', 'Income'], ['var(--green)', 'Savings'], ['var(--gold)', 'Expenses']].map(([c, l]) => (
-                <span key={l} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 2, background: c, display: 'inline-block' }} /> {l}
-                </span>
-              ))}
-            </div>
+
+            {/* Cash-flow flow (selected month): sources → in-hand → out */}
+            {activeEntry && activeBreakdown && (
+              <div style={{ borderTop: '1px solid var(--border)', marginTop: '0.75rem', paddingTop: '0.75rem' }}>
+                <div className="section-title" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                  Cash flow · {monthLabel(activeEntry.month)}
+                </div>
+                <CashFlow
+                  incomes={allTimeIncomeDataForEntry(activeEntry)}
+                  deductions={activeBreakdown.deductions}
+                  takeHome={heroTakeHome}
+                  expenses={activeEntry.expenses}
+                  savings={activeEntry.savings}
+                />
+              </div>
+            )}
           </div>
 
           {/* Breakdown Charts (Latest Month / Selected Month) */}
@@ -626,53 +797,74 @@ export default function SalaryPage() {
             <button className="btn btn-primary mt-2" onClick={openAdd}><Plus size={14} /> Log First Month</button>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="inv-table">
-              <thead>
-                <tr>
-                  <th>Month</th>
-                  <th>Total Income</th>
-                  <th>Income Streams</th>
-                  <th>Deductions</th>
-                  <th>Total Expenses</th>
-                  <th>Monthly Savings</th>
-                  <th>Savings Rate</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((e) => {
-                  const deductions = e.pf + e.tax + e.otherDeductions;
-                  const rate = Math.round((e.savings / e.grossSalary) * 100);
-                  const incomeCount = e.incomes?.length || 1;
-                  const expenseCount = e.expenseItems?.length || 1;
-                  const isSelected = selectedEntryId === e.id;
-                  
-                  return (
-                    <tr key={e.id} style={{ cursor: 'pointer', background: isSelected ? 'rgba(59,130,246,0.06)' : '' }} onClick={() => setSelectedEntryId(e.id)}>
-                      <td><span style={{ fontWeight: 600 }}>{monthLabel(e.month)}</span></td>
-                      <td style={{ color: 'var(--blue)', fontWeight: 500 }}>{formatCurrency(e.grossSalary)}</td>
-                      <td>
-                        <span className="badge badge-blue">{incomeCount} source{incomeCount !== 1 ? 's' : ''}</span>
-                        <span className="badge badge-gray" style={{ marginLeft: '0.25rem' }}>{expenseCount} category{expenseCount !== 1 ? 'ies' : ''}</span>
-                      </td>
-                      <td style={{ color: 'var(--red)' }}>-{formatCurrency(deductions)}</td>
-                      <td style={{ color: 'var(--gold)' }}>{formatCurrency(e.expenses)}</td>
-                      <td style={{ color: 'var(--green)', fontWeight: 600 }}>{formatCurrency(e.savings)}</td>
-                      <td>
-                        <span className={`badge ${rate >= 20 ? 'badge-green' : 'badge-gold'}`}>{rate}%</span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          <button className="btn btn-ghost btn-sm btn-icon" onClick={(ev) => { ev.stopPropagation(); openEdit(e); }} title="Edit"><Eye size={14} /></button>
-                          <button className="btn btn-danger btn-sm btn-icon" onClick={(ev) => { ev.stopPropagation(); del(e.id); }} title="Delete"><Trash2 size={14} /></button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {entries.map((e) => {
+              const deductions = e.pf + e.tax + e.otherDeductions;
+              const rate = entryRate(e);
+              const th = computeTakeHome(e);
+              const incomeCount = e.incomes?.length || 1;
+              const isSelected = selectedEntryId === e.id;
+              const isExpanded = expandedId === e.id;
+              // Mini sparkline bar: savings vs expenses split of take-home
+              const savePct = th > 0 ? Math.round((e.savings / th) * 100) : 0;
+              return (
+                <div key={e.id} className="card-sm" style={{ border: `1px solid ${isSelected ? 'var(--blue)' : 'var(--border)'}`, background: isSelected ? 'rgba(59,130,246,0.05)' : 'var(--bg-card)', cursor: 'pointer', transition: 'border-color 0.15s' }}
+                  onClick={() => { setSelectedEntryId(e.id); setExpandedId(isExpanded ? null : e.id); }}>
+                  {/* Collapsed row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                    <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
+                    <div style={{ minWidth: 70 }}><span style={{ fontWeight: 700 }}>{monthLabel(e.month)}</span></div>
+                    <div style={{ minWidth: 110 }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>In-hand</div>
+                      <div style={{ fontWeight: 600 }}>{formatCurrency(th)}</div>
+                    </div>
+                    <div style={{ minWidth: 90 }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Saved</div>
+                      <div style={{ fontWeight: 600, color: 'var(--green)' }}>{formatCurrency(e.savings)}</div>
+                    </div>
+                    {/* sparkline: proportion saved vs spent */}
+                    <div style={{ flex: 1, minWidth: 120 }}>
+                      <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--track-bg)' }}>
+                        <div style={{ width: `${savePct}%`, background: 'var(--green)' }} />
+                        <div style={{ width: `${100 - savePct}%`, background: 'var(--gold)', opacity: 0.7 }} />
+                      </div>
+                    </div>
+                    <span className={`badge ${rate >= 20 ? 'badge-green' : 'badge-gold'}`}>{rate}% saved</span>
+                    <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
+                      <button className="btn btn-ghost btn-sm btn-icon" onClick={(ev) => { ev.stopPropagation(); openEdit(e); }} title="Edit"><Eye size={14} /></button>
+                      <button className="btn btn-danger btn-sm btn-icon" onClick={(ev) => { ev.stopPropagation(); del(e.id); }} title="Delete"><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }} onClick={(ev) => ev.stopPropagation()}>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--blue)', marginBottom: '0.4rem' }}>Income Streams ({incomeCount})</div>
+                        {(e.incomes && e.incomes.length > 0 ? e.incomes : [{ id: 'def', sourceName: 'Primary Salary', amount: e.grossSalary, type: 'primary' }]).map((inc, idx) => (
+                          <div key={inc.id || idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.15rem 0' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>{inc.sourceName || 'Primary Salary'}</span>
+                            <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(inc.amount)}</span>
+                          </div>
+                        ))}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.15rem 0', color: 'var(--red)' }}>
+                          <span>Deductions</span><span>−{formatCurrency(deductions)}</span>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gold)', marginBottom: '0.4rem' }}>Expenses</div>
+                        {(e.expenseItems && e.expenseItems.length > 0 ? e.expenseItems : [{ id: 'def', category: 'other', amount: e.expenses, notes: '' }]).map((exp, idx) => (
+                          <div key={exp.id || idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '0.15rem 0' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>{expenseCategories.find((c) => c.id === exp.category)?.label.split(' ').slice(1).join(' ') || exp.category}</span>
+                            <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(exp.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
