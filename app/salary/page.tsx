@@ -359,7 +359,7 @@ export default function SalaryPage() {
   }, [] as { category: string; name: string; value: number; color: string }[]) : [];
 
   const avgSavingsRate = entries.length > 0
-    ? Math.round(entries.reduce((s, e) => s + (e.savings / e.grossSalary) * 100, 0) / entries.length)
+    ? Math.round(entries.reduce((s, e) => { const th = computeTakeHome(e); return s + (th > 0 ? (e.savings / th) * 100 : 0); }, 0) / entries.length)
     : 0;
   const totalSaved = entries.reduce((s, e) => s + e.savings, 0);
 
@@ -405,8 +405,8 @@ export default function SalaryPage() {
       <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
         <div className="stat-card stat-card-blue">
           <div className="stat-label">Total Income (Latest)</div>
-          <div className="stat-value">{entries[0] ? formatCurrency(entries[0].grossSalary) : '—'}</div>
-          <div className="stat-sub">{entries[0] ? monthLabel(entries[0].month) : 'No data'}</div>
+          <div className="stat-value">{entries[0] ? formatCurrency(computeTakeHome(entries[0])) : '—'}</div>
+          <div className="stat-sub">{entries[0] ? `In-hand · Gross ${formatCurrency(entries[0].grossSalary)}` : 'No data'}</div>
         </div>
         <div className="stat-card stat-card-green">
           <div className="stat-label">Avg Savings Rate</div>

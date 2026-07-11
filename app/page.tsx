@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { getProfile, getSalaryEntries, getInvestments } from '@/lib/storage';
 import { formatCurrency, formatPercent, calcHealthScore, getHealthLabel, monthLabel } from '@/lib/formatters';
+import { computeTakeHome } from '@/lib/income';
 import type { UserProfile, SalaryEntry, Investment } from '@/types';
 import { Wallet, TrendingUp, PieChart, Bot, ArrowRight, AlertTriangle, CheckCircle, Newspaper, Compass } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
@@ -49,7 +50,9 @@ export default function Dashboard() {
   const totalCurrent = investments.reduce((s, i) => s + i.currentValue, 0);
   const totalPL = totalCurrent - totalInvested;
   const plPct = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
-  const savingsRate = latest ? Math.round((latest.savings / latest.grossSalary) * 100) : 0;
+  // Income = in-hand take-home (gross - deductions + other income), not gross.
+  const takeHome = latest ? computeTakeHome(latest) : 0;
+  const savingsRate = takeHome > 0 ? Math.round((latest!.savings / takeHome) * 100) : 0;
 
   const typeCount = [...new Set(investments.map((i) => i.type))].length;
   const emergencyTarget = (profile?.monthlyExpenses || 0) * (profile?.emergencyFundMonths || 6);
@@ -63,7 +66,7 @@ export default function Dashboard() {
   const { label: healthLabel, color: healthColor } = getHealthLabel(healthScore);
 
   // Count-up values
-  const animSalary = useCountUp(latest ? latest.grossSalary : 0);
+  const animSalary = useCountUp(takeHome);
   const animSavings = useCountUp(latest ? latest.savings : 0);
   const animPortfolio = useCountUp(totalCurrent);
   const animHealth = useCountUp(healthScore, 1200);
@@ -121,7 +124,7 @@ export default function Dashboard() {
           </div>
           <div className="stat-label">Monthly Income</div>
           <div className="stat-value">{latest ? formatCurrency(animSalary) : '—'}</div>
-          <div className="stat-sub">Take-home: {latest ? formatCurrency(latest.grossSalary - latest.pf - latest.tax - latest.otherDeductions) : '—'}</div>
+          <div className="stat-sub">In-hand · Gross: {latest ? formatCurrency(latest.grossSalary) : '—'}</div>
         </div>
         <div className={`stat-card stat-card-green ${loaded ? 'animate-count' : ''}`} style={{ animationDelay: '0.08s' }}>
           <div className="stat-icon" style={{ background: 'var(--green-glow)', color: 'var(--green)' }}>
