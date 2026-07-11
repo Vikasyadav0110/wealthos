@@ -247,7 +247,7 @@ export default function SalaryPage() {
     printWindow.document.write(`
       <html>
         <head>
-          <title>WealthOS - Salary & Savings Report</title>
+          <title>WealthOS - Income & Savings Report</title>
           <style>
             body { font-family: sans-serif; padding: 2rem; color: #1e293b; }
             h1 { font-size: 1.75rem; margin-bottom: 0.5rem; }
@@ -259,7 +259,7 @@ export default function SalaryPage() {
           </style>
         </head>
         <body>
-          <h1>Salary & Savings History Report</h1>
+          <h1>Income & Savings History Report</h1>
           <div class="meta">Generated on ${new Date().toLocaleDateString('en-IN')} · ${entries.length} Months Tracked</div>
           <table>
             <thead>
@@ -354,7 +354,7 @@ export default function SalaryPage() {
       <ConfirmModal
         isOpen={!!confirmDeleteId}
         title="Delete Entry?"
-        message="This monthly salary entry will be permanently removed. This action cannot be undone."
+        message="This monthly income entry will be permanently removed. This action cannot be undone."
         confirmLabel="Delete Entry"
         onConfirm={confirmDelete}
         onCancel={() => setConfirmDeleteId(null)}
@@ -380,7 +380,7 @@ export default function SalaryPage() {
 
       <div className="section-header">
         <div>
-          <h1>Salary &amp; Cash Flow</h1>
+          <h1>Income &amp; Cash Flow</h1>
           <div className="section-sub">Track multiple income sources and categorized monthly expenses</div>
         </div>
         <button className="btn btn-primary" onClick={openAdd}><Plus size={16} /> Add Monthly Cash Flow</button>

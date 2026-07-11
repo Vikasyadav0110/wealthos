@@ -119,7 +119,7 @@ export default function Dashboard() {
           <div className="stat-icon" style={{ background: 'var(--blue-glow)', color: 'var(--blue)' }}>
             <Wallet size={18} />
           </div>
-          <div className="stat-label">Monthly Salary</div>
+          <div className="stat-label">Monthly Income</div>
           <div className="stat-value">{latest ? formatCurrency(animSalary) : '—'}</div>
           <div className="stat-sub">Take-home: {latest ? formatCurrency(latest.grossSalary - latest.pf - latest.tax - latest.otherDeductions) : '—'}</div>
         </div>
@@ -208,7 +208,7 @@ export default function Dashboard() {
               <div className="empty-state-icon">📊</div>
               <div className="empty-state-title">No salary data yet</div>
               <div className="empty-state-sub">Add your first salary entry to see the chart</div>
-              <Link href="/salary" className="btn btn-primary btn-sm mt-2">Add Salary</Link>
+              <Link href="/salary" className="btn btn-primary btn-sm mt-2">Add Income</Link>
             </div>
           )}
         </div>
@@ -288,7 +288,7 @@ export default function Dashboard() {
           <h2 style={{ marginBottom: '0.5rem' }}>Let&apos;s get started!</h2>
           <p style={{ marginBottom: '1.5rem' }}>Add your salary and investments to see your complete financial picture.</p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link href="/salary" className="btn btn-primary">💰 Add First Salary</Link>
+            <Link href="/salary" className="btn btn-primary">💰 Add First Income</Link>
             <Link href="/portfolio" className="btn btn-ghost">📊 Add Investment</Link>
             <Link href="/advisor" className="btn btn-ghost">🤖 Ask AI</Link>
           </div>

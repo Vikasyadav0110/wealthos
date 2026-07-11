@@ -12,7 +12,7 @@ const NAV = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   ]},
   { section: 'Cash Flow', items: [
-    { href: '/salary', label: 'Salary Tracker', icon: Wallet },
+    { href: '/salary', label: 'Income Tracker', icon: Wallet },
     { href: '/expenses', label: 'Daily Expenses', icon: ReceiptText },
   ]},
   { section: 'Wealth & Goals', items: [

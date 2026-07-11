@@ -39,7 +39,7 @@ export function buildFinancialContext(
     .map(([t, v]) => `  - ${t}: ₹${v.toLocaleString('en-IN')}`)
     .join('\n');
 
-  let salaryIncomeStr = '- No salary data entered yet';
+  let salaryIncomeStr = '- No income data entered yet';
   if (latestSalary) {
     const takeHome = latestSalary.grossSalary - latestSalary.pf - latestSalary.tax - latestSalary.otherDeductions;
     
