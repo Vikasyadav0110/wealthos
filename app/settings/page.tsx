@@ -6,6 +6,7 @@ import { Key, Eye, EyeOff, Save, RotateCcw, CheckCircle, Lock, LockOpen, Timer, 
 import { isAuthEnabled, getLockTimeout, setLockTimeout } from '@/lib/auth';
 import PasswordModal from '@/components/auth/PasswordModal';
 import { useToast } from '@/components/ui/Toast';
+import { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL } from '@/lib/models';
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -162,6 +163,22 @@ export default function SettingsPage() {
               Get at: <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue-light)' }}>console.anthropic.com</a> → API Keys
             </div>
             {profile.claudeApiKey && <div className="badge badge-green" style={{ marginTop: '0.5rem' }}><CheckCircle size={12} /> Configured</div>}
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label">🧠 AI Model</label>
+            <select
+              className="input"
+              value={profile.claudeModel || DEFAULT_CLAUDE_MODEL}
+              onChange={(e) => upd('claudeModel', e.target.value)}
+            >
+              {CLAUDE_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label} — {m.blurb}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+              Adaptive thinking is on, so the advisor only spends extra reasoning (and credits) on questions that need it.
+            </div>
           </div>
 
           <div className="form-group">

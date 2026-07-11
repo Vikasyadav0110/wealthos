@@ -75,7 +75,7 @@ export default function AdvisorPage() {
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: conversationHistory, systemPrompt, apiKey: profile?.claudeApiKey }),
+        body: JSON.stringify({ messages: conversationHistory, systemPrompt, apiKey: profile?.claudeApiKey, model: profile?.claudeModel }),
       });
 
       const data = await res.json();
