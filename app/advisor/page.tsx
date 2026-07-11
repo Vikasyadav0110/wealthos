@@ -78,16 +78,45 @@ export default function AdvisorPage() {
         body: JSON.stringify({ messages: conversationHistory, systemPrompt, apiKey: profile?.claudeApiKey, model: profile?.claudeModel }),
       });
 
-      const data = await res.json();
-      const aiMsg: ChatMessage = {
-        id: generateId(), role: 'assistant',
-        content: data.error ? `❌ ${data.error}` : data.text,
-        timestamp: new Date().toISOString(),
-      };
+      // Non-streaming errors (e.g. missing key) come back as JSON.
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({ error: 'Request failed' }));
+        const errMsg: ChatMessage = {
+          id: generateId(), role: 'assistant',
+          content: `❌ ${data.error || 'Request failed'}`,
+          timestamp: new Date().toISOString(),
+        };
+        const finalMessages = [...updatedMessages, errMsg];
+        setMessages(finalMessages);
+        saveChatHistory(finalMessages.slice(-30));
+        return;
+      }
 
-      const finalMessages = [...updatedMessages, aiMsg];
-      setMessages(finalMessages);
-      saveChatHistory(finalMessages.slice(-30));
+      // Stream: append tokens to a placeholder assistant message as they arrive.
+      const aiId = generateId();
+      setMessages([...updatedMessages, { id: aiId, role: 'assistant', content: '', timestamp: new Date().toISOString() }]);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let acc = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        acc += decoder.decode(value, { stream: true });
+        const display = acc.includes('[[WEALTHOS_ERROR]]')
+          ? `❌ ${acc.split('[[WEALTHOS_ERROR]]')[1].trim()}`
+          : acc;
+        setMessages((prev) => prev.map((m) => (m.id === aiId ? { ...m, content: display } : m)));
+      }
+
+      const finalContent = acc.includes('[[WEALTHOS_ERROR]]')
+        ? `❌ ${acc.split('[[WEALTHOS_ERROR]]')[1].trim()}`
+        : acc;
+      setMessages((prev) => {
+        const next = prev.map((m) => (m.id === aiId ? { ...m, content: finalContent } : m));
+        saveChatHistory(next.slice(-30));
+        return next;
+      });
     } catch (err) {
       console.error(err);
       const errMsg: ChatMessage = { id: generateId(), role: 'assistant', content: '❌ Network error. Please check your connection and API key in Settings.', timestamp: new Date().toISOString() };
