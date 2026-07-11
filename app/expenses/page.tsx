@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { getDailyExpenses, saveDailyExpense, deleteDailyExpense, getProfile, getCustomExpenses, saveCustomExpenses, CategoryItem } from '@/lib/storage';
-import { formatCurrency, generateId } from '@/lib/formatters';
+import { formatCurrency, generateId, monthLabel } from '@/lib/formatters';
 import type { DailyExpense } from '@/types';
 import { Plus, Trash2, Calendar, Filter, Receipt, Download, Printer } from 'lucide-react';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
@@ -25,6 +25,9 @@ export default function ExpensesPage() {
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  // Month shown in the daily Spending Trend chart (defaults to current month)
+  const [chartMonth, setChartMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   const reload = () => {
     setExpenses(getDailyExpenses());
@@ -134,8 +137,11 @@ export default function ExpensesPage() {
     return true;
   });
 
+  // Months that actually have expenses, newest first — drives the chart picker
+  const availableMonths = [...new Set(expenses.map((e) => e.date.slice(0, 7)))].sort((a, b) => b.localeCompare(a));
+
   const dailySums = expenses
-    .filter((e) => e.date.startsWith(currentMonthYear))
+    .filter((e) => e.date.startsWith(chartMonth))
     .reduce((acc, e) => {
       const day = e.date.slice(8, 10);
       acc[day] = (acc[day] || 0) + e.amount;
@@ -347,9 +353,22 @@ export default function ExpensesPage() {
 
         {/* Expenses Trend Chart */}
         <div className="card">
-          <h3 style={{ marginBottom: '1rem' }}>📈 Spending Trend (Month)</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0 }}>📈 Spending Trend</h3>
+            <select
+              className="input"
+              value={chartMonth}
+              onChange={(e) => setChartMonth(e.target.value)}
+              style={{ width: 'auto', fontSize: '0.8rem', padding: '0.35rem 0.5rem' }}
+              aria-label="Chart month"
+            >
+              {(availableMonths.includes(chartMonth) ? availableMonths : [chartMonth, ...availableMonths]).map((m) => (
+                <option key={m} value={m}>{monthLabel(m)}</option>
+              ))}
+            </select>
+          </div>
           {chartData.length === 0 ? (
-            <div className="empty-state" style={{ height: 220 }}><div className="empty-state-icon">📊</div><div className="empty-state-title">No expenses logged for this month yet</div></div>
+            <div className="empty-state" style={{ height: 220 }}><div className="empty-state-icon">📊</div><div className="empty-state-title">No expenses logged for {monthLabel(chartMonth)}</div></div>
           ) : (
             <div style={{ height: 260 }}>
               <ResponsiveContainer width="100%" height="100%">

@@ -29,6 +29,8 @@ export default function SalaryPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showExpCatInput, setShowExpCatInput] = useState<string | null>(null); // rowId awaiting input
   const [showIncTypeInput, setShowIncTypeInput] = useState<string | null>(null);
+  // How many recent months the history chart shows (0 = all)
+  const [chartWindow, setChartWindow] = useState<number>(6);
   const { success, info } = useToast();
 
   // Form State
@@ -302,7 +304,9 @@ export default function SalaryPage() {
   };
 
   // Recharts overall timeline data
-  const chartData = [...entries].reverse().slice(-6).map((e) => ({
+  const orderedEntries = [...entries].reverse();
+  const windowedEntries = chartWindow > 0 ? orderedEntries.slice(-chartWindow) : orderedEntries;
+  const chartData = windowedEntries.map((e) => ({
     month: monthLabel(e.month),
     salary: e.grossSalary,
     savings: e.savings,
@@ -415,9 +419,22 @@ export default function SalaryPage() {
         <div className="grid-3" style={{ marginBottom: '1.5rem' }}>
           {/* Timeline History */}
           <div className="card" style={{ gridColumn: 'span 2' }}>
-            <div className="section-title" style={{ fontSize: '1rem', marginBottom: '1rem' }}>
-              <TrendingUp size={16} style={{ display: 'inline', marginRight: '0.5rem', color: 'var(--blue)' }} />
-              Monthly Budget History (Last 6 Months)
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>
+                <TrendingUp size={16} style={{ display: 'inline', marginRight: '0.5rem', color: 'var(--blue)' }} />
+                Monthly Budget History
+              </div>
+              <select
+                className="input"
+                value={chartWindow}
+                onChange={(e) => setChartWindow(Number(e.target.value))}
+                style={{ width: 'auto', fontSize: '0.8rem', padding: '0.35rem 0.5rem' }}
+                aria-label="Chart month range"
+              >
+                <option value={6}>Last 6 months</option>
+                <option value={12}>Last 12 months</option>
+                <option value={0}>All months</option>
+              </select>
             </div>
             <div style={{ height: 220 }}>
               <ResponsiveContainer width="100%" height="100%">

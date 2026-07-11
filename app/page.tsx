@@ -34,6 +34,8 @@ export default function Dashboard() {
   const [salaryEntries, setSalaryEntries] = useState<SalaryEntry[]>([]);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // How many recent months the trend chart shows (0 = all)
+  const [chartWindow, setChartWindow] = useState<number>(6);
 
   useEffect(() => {
     setProfile(getProfile());
@@ -66,7 +68,8 @@ export default function Dashboard() {
   const animPortfolio = useCountUp(totalCurrent);
   const animHealth = useCountUp(healthScore, 1200);
 
-  const chartData = [...salaryEntries].reverse().slice(-6).map((e) => ({
+  const orderedEntries = [...salaryEntries].reverse();
+  const chartData = (chartWindow > 0 ? orderedEntries.slice(-chartWindow) : orderedEntries).map((e) => ({
     month: monthLabel(e.month),
     salary: e.grossSalary,
     savings: e.savings,
@@ -153,8 +156,19 @@ export default function Dashboard() {
       {/* Chart + Quick Actions */}
       <div className="grid-2" style={{ marginBottom: '1.5rem' }}>
         <div className="card">
-          <div className="section-header" style={{ marginBottom: '1rem' }}>
-            <div className="section-title" style={{ fontSize: '1rem' }}>Income vs Savings (6 months)</div>
+          <div className="section-header" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div className="section-title" style={{ fontSize: '1rem' }}>Income vs Savings</div>
+            <select
+              className="input"
+              value={chartWindow}
+              onChange={(e) => setChartWindow(Number(e.target.value))}
+              style={{ width: 'auto', fontSize: '0.8rem', padding: '0.35rem 0.5rem' }}
+              aria-label="Chart month range"
+            >
+              <option value={6}>Last 6 months</option>
+              <option value={12}>Last 12 months</option>
+              <option value={0}>All months</option>
+            </select>
           </div>
           {chartData.length > 0 ? (
             <div className="chart-container" style={{ height: 220 }}>
