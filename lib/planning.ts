@@ -69,6 +69,49 @@ export function suggestAllocation(surplus: number, risk: RiskAppetite | undefine
   });
 }
 
+// The risk-based target weights (the single source of truth, replacing the
+// portfolio page's old hardcoded weights).
+export function targetWeights(risk: RiskAppetite | undefined): AssetSlice[] {
+  return ASSET_ALLOCATIONS[risk ?? 'moderate'];
+}
+
+export interface RebalanceRow {
+  id: string;
+  label: string;
+  color: string;
+  currentValue: number;
+  currentPct: number;
+  targetPct: number;
+  targetValue: number;
+  delta: number;   // +ve = add this much, -ve = trim this much
+}
+
+// Compare actual holdings (by asset id, current value) against the risk-based
+// target, and return the rupee move needed per asset to rebalance.
+export function rebalancePlan(
+  currentByType: Record<string, number>,
+  risk: RiskAppetite | undefined
+): RebalanceRow[] {
+  const model = targetWeights(risk);
+  const total = Object.values(currentByType).reduce((s, v) => s + v, 0);
+  if (total <= 0) return [];
+  return model.map((m) => {
+    const currentValue = currentByType[m.id] || 0;
+    const currentPct = Math.round((currentValue / total) * 100);
+    const targetValue = Math.round((total * m.pct) / 100);
+    return {
+      id: m.id,
+      label: m.label,
+      color: m.color,
+      currentValue,
+      currentPct,
+      targetPct: m.pct,
+      targetValue,
+      delta: targetValue - currentValue,
+    };
+  });
+}
+
 export interface TargetAssessment {
   requiredSIP: number;      // monthly SIP needed to hit target in `years`, given current corpus
   achievable: boolean;      // is requiredSIP <= monthlySurplus?

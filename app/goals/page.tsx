@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getGoals, saveGoal, deleteGoal, getCustomInvestments } from '@/lib/storage';
+import { getGoals, saveGoal, deleteGoal, getCustomInvestments, getInvestments } from '@/lib/storage';
 import { formatCurrency, generateId } from '@/lib/formatters';
-import type { Goal } from '@/types';
+import type { Goal, Investment } from '@/types';
 import { Plus, Trash2, Edit2, X, Target, Calendar, Calculator, Sparkles, TrendingUp, AlertTriangle } from 'lucide-react';
 import { ConfirmModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
@@ -27,6 +27,7 @@ const EMPTY_GOAL: Omit<Goal, 'id' | 'createdAt'> = {
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [categories, setCategories] = useState(DEFAULT_GOAL_CATEGORIES);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_GOAL });
@@ -37,8 +38,12 @@ export default function GoalsPage() {
   // Return rate for SIP helper (assumed default 12% p.a.)
   const [expectedRate, setExpectedRate] = useState(12);
 
+  // Current value of investments linked to a goal (I3)
+  const linkedValue = (goalId: string) => investments.filter((i) => i.goalId === goalId).reduce((s, i) => s + i.currentValue, 0);
+
   const reload = () => {
     setGoals(getGoals());
+    setInvestments(getInvestments());
     const custom = getCustomInvestments();
     const compiled = [
       ...DEFAULT_GOAL_CATEGORIES,
@@ -209,11 +214,14 @@ export default function GoalsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
           {goals.map((g) => {
             const months = getMonthsRemaining(g.targetDate);
-            const progress = Math.min(Math.round((g.currentAmount / g.targetAmount) * 100), 100);
-            const reqSip = calcRequiredSIP(g);
+            const linked = linkedValue(g.id);
+            const effectiveCurrent = g.currentAmount + linked;
+            const effGoal = { ...g, currentAmount: effectiveCurrent };
+            const progress = Math.min(Math.round((effectiveCurrent / g.targetAmount) * 100), 100);
+            const reqSip = calcRequiredSIP(effGoal);
             const cat = categories.find((c) => c.id === g.category) || { label: '💰 Goal' };
             const yearsText = months >= 12 ? ` (${(months / 12).toFixed(1)} years)` : '';
-            const isOverdue = new Date(g.targetDate) < new Date() && g.currentAmount < g.targetAmount;
+            const isOverdue = new Date(g.targetDate) < new Date() && effectiveCurrent < g.targetAmount;
 
             return (
               <div className="card" key={g.id} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -250,7 +258,8 @@ export default function GoalsPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', background: 'var(--inner-card)', padding: '0.65rem', borderRadius: 8, border: '1px solid var(--border)' }}>
                   <div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Current Saved</div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--green)' }}>{formatCurrency(g.currentAmount)}</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--green)' }}>{formatCurrency(effectiveCurrent)}</div>
+                    {linked > 0 && <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>incl. {formatCurrency(linked)} linked investments</div>}
                   </div>
                   <div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Target corpus</div>

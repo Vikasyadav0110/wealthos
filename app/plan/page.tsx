@@ -1,14 +1,18 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { getProfile, getSalaryEntries, getInvestments } from '@/lib/storage';
+import { getProfile, saveProfile, getSalaryEntries, getInvestments, getBankAccounts, saveBankAccounts } from '@/lib/storage';
 import { computeIncomeBreakdown } from '@/lib/income';
 import { calcCompound } from '@/lib/compound';
 import { assessTarget, suggestAllocation, defaultRateFor, type RiskAppetite } from '@/lib/planning';
-import { formatCurrency } from '@/lib/formatters';
-import type { SalaryEntry, Investment, UserProfile } from '@/types';
+import { formatCurrency, generateId } from '@/lib/formatters';
+import type { SalaryEntry, Investment, UserProfile, BankAccount } from '@/types';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Target, TrendingUp, Wallet, PiggyBank, Sparkles, AlertTriangle, CheckCircle2, Info, Lightbulb } from 'lucide-react';
+import { Target, TrendingUp, Wallet, PiggyBank, Sparkles, AlertTriangle, CheckCircle2, Info, Lightbulb, Shield, Plus, Trash2, Building2 } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
+
+const BANK_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+const BANK_PURPOSES = ['Salary Account', 'Monthly Expenses', 'Emergency Fund', 'Investments & Savings', 'General'];
 
 const CR = 10000000;
 
@@ -18,19 +22,29 @@ export default function PlanPage() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loaded, setLoaded] = useState(false);
 
+  const { success } = useToast();
+
   // Target planner inputs
   const [targetAmount, setTargetAmount] = useState(CR);
   const [targetYears, setTargetYears] = useState(10);
   const [rate, setRate] = useState(11);
 
-  useEffect(() => {
+  // Bank accounts
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+
+  const reload = useCallback(() => {
     const p = getProfile();
     setProfile(p);
     setEntries(getSalaryEntries());
     setInvestments(getInvestments());
+    setBankAccounts(getBankAccounts());
     setRate(defaultRateFor(p?.riskAppetite));
     setLoaded(true);
   }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const risk: RiskAppetite = profile?.riskAppetite ?? 'moderate';
   const latest = entries[0];
@@ -46,6 +60,72 @@ export default function PlanPage() {
 
   // Current invested corpus, from the portfolio.
   const currentCorpus = investments.reduce((s, i) => s + i.currentValue, 0);
+
+  // Emergency fund — reconcile with bank accounts tagged "Emergency Fund" (I5)
+  const emergencyTarget = (profile?.monthlyExpenses || 0) * (profile?.emergencyFundMonths || 6);
+  const emergencyBankBalance = bankAccounts.filter((a) => a.purpose === 'Emergency Fund').reduce((s, a) => s + a.balance, 0);
+  // Count the greater of the manually-entered amount and the tagged bank balances,
+  // so linking an Emergency Fund account auto-counts toward the target.
+  const emergencyFundCurrent = Math.max(profile?.emergencyFundCurrent || 0, emergencyBankBalance);
+  const emergencyPct = emergencyTarget > 0 ? Math.min(Math.round((emergencyFundCurrent / emergencyTarget) * 100), 100) : 0;
+  const emergencyColor = emergencyPct >= 100 ? 'var(--green)' : emergencyPct >= 50 ? 'var(--gold)' : 'var(--red)';
+
+  const updateEmergencyFund = (amount: number) => {
+    if (!profile) return;
+    const updated = { ...profile, emergencyFundCurrent: amount };
+    saveProfile(updated);
+    setProfile(updated);
+    success('Emergency fund updated!');
+  };
+
+  // Bank accounts helpers
+  const addBankAccount = () => {
+    if (bankAccounts.length >= 4) return;
+    const newAccount: BankAccount = {
+      id: generateId(),
+      name: '',
+      type: 'savings',
+      balance: 0,
+      purpose: 'General',
+      color: BANK_COLORS[bankAccounts.length] || '#94a3b8',
+    };
+    const updated = [...bankAccounts, newAccount];
+    setBankAccounts(updated);
+    saveBankAccounts(updated);
+  };
+
+  const updateBankAccount = (id: string, field: keyof BankAccount, value: unknown) => {
+    const updated = bankAccounts.map((a) => a.id === id ? { ...a, [field]: value } : a);
+    setBankAccounts(updated);
+    saveBankAccounts(updated);
+  };
+
+  const removeBankAccount = (id: string) => {
+    const updated = bankAccounts.filter((a) => a.id !== id);
+    setBankAccounts(updated);
+    saveBankAccounts(updated);
+    success('Account removed');
+  };
+
+  const totalBankBalance = bankAccounts.reduce((s, a) => s + a.balance, 0);
+
+  // Smart allocation suggestion based on income
+  const suggestedSplit = useMemo(() => {
+    if (!latest || bankAccounts.length === 0) return null;
+    const th = takeHome;
+    const exp = totalExpenses;
+    const surplus = monthlySurplus;
+    const emergencyNeed = Math.max(emergencyTarget - emergencyFundCurrent, 0);
+    const monthlyEmergencySave = emergencyNeed > 0 ? Math.min(Math.round(surplus * 0.3), emergencyNeed) : 0;
+    const investable = surplus - monthlyEmergencySave;
+
+    return {
+      salary: th,
+      expenses: exp,
+      emergency: monthlyEmergencySave,
+      investments: investable,
+    };
+  }, [latest, bankAccounts.length, takeHome, totalExpenses, monthlySurplus, emergencyTarget, emergencyFundCurrent]);
 
   const assessment = useMemo(
     () => assessTarget({ targetAmount, currentCorpus, years: targetYears, monthlySurplus, rate }),
@@ -124,6 +204,190 @@ export default function PlanPage() {
           <div className="stat-label">Savings Rate</div>
           <div className="stat-value" style={{ color: savingsRate >= 20 ? 'var(--green)' : 'var(--gold)' }}>{savingsRate}%</div>
           <div className="stat-sub">{savingsRate >= 20 ? '✅ On track' : 'Aim for 20%+'}</div>
+        </div>
+      </div>
+
+      {/* Emergency Fund + Bank Accounts */}
+      <div className="grid-2" style={{ marginBottom: '1.5rem', alignItems: 'start' }}>
+        {/* Emergency Fund Tracker */}
+        <div className="card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem' }}>
+            <div style={{ width: 36, height: 36, background: `${emergencyColor}20`, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Shield size={18} style={{ color: emergencyColor }} />
+            </div>
+            <div>
+              <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>Emergency Fund</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{profile?.emergencyFundMonths || 6} months of expenses</div>
+            </div>
+          </div>
+
+          {/* Progress */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '0.4rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Progress</span>
+              <span style={{ fontWeight: 600, color: emergencyColor }}>{emergencyPct}%</span>
+            </div>
+            <div style={{ height: 10, background: 'var(--track-bg)', borderRadius: 6, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${emergencyPct}%`, background: emergencyColor, borderRadius: 6, transition: 'width 0.4s ease' }} />
+            </div>
+          </div>
+
+          {/* Amount display */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Current</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: emergencyColor }}>{formatCurrency(emergencyFundCurrent)}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Target</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{formatCurrency(emergencyTarget)}</div>
+            </div>
+          </div>
+
+          {/* Update amount */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input
+              className="input"
+              type="number"
+              placeholder="Update current amount"
+              value={emergencyFundCurrent || ''}
+              onChange={(e) => {
+                if (!profile) return;
+                setProfile({ ...profile, emergencyFundCurrent: Number(e.target.value) });
+              }}
+              style={{ flex: 1 }}
+            />
+            <button className="btn btn-primary btn-sm" onClick={() => updateEmergencyFund(profile?.emergencyFundCurrent || 0)}>Save</button>
+          </div>
+
+          {emergencyPct >= 100 && (
+            <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(16,185,129,0.1)', borderRadius: 8, fontSize: '0.78rem', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <CheckCircle2 size={14} /> Emergency fund fully covered! ✅
+            </div>
+          )}
+          {emergencyPct < 100 && emergencyTarget > 0 && (
+            <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(245,158,11,0.1)', borderRadius: 8, fontSize: '0.78rem', color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <AlertTriangle size={14} /> {formatCurrency(emergencyTarget - emergencyFundCurrent)} more needed. Keep this in a high-interest savings account or liquid fund.
+            </div>
+          )}
+        </div>
+
+        {/* Bank Accounts */}
+        <div className="card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div style={{ width: 36, height: 36, background: 'var(--blue-glow)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Building2 size={18} style={{ color: 'var(--blue)' }} />
+              </div>
+              <div>
+                <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>Bank Accounts</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Configure up to 4 accounts</div>
+              </div>
+            </div>
+            {bankAccounts.length < 4 && (
+              <button className="btn btn-ghost btn-sm" onClick={addBankAccount} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}><Plus size={14} /> Add Account</button>
+            )}
+          </div>
+
+          {bankAccounts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🏦</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>Add your bank accounts to get smart allocation suggestions</div>
+              <button className="btn btn-primary btn-sm" onClick={addBankAccount}><Plus size={14} /> Add First Account</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {/* Table Headers */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.9fr 1.1fr 1.3fr auto', gap: '0.5rem', padding: '0 0.5rem', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <div>Bank Name</div>
+                <div>A/C Type</div>
+                <div>Balance</div>
+                <div>Purpose</div>
+                <div></div>
+              </div>
+
+              {bankAccounts.map((acc, idx) => (
+                <div key={acc.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.9fr 1.1fr 1.3fr auto', gap: '0.5rem', alignItems: 'center', padding: '0.4rem 0.5rem', background: 'var(--inner-card)', borderRadius: 'var(--radius-md)', borderLeft: `3px solid ${acc.color}`, transition: 'border-color var(--transition)' }}>
+                  <input
+                    className="input"
+                    placeholder={`e.g. Bank ${idx + 1}`}
+                    value={acc.name}
+                    onChange={(e) => updateBankAccount(acc.id, 'name', e.target.value)}
+                    style={{ fontSize: '0.8rem', padding: '0.35rem 0.5rem', height: 'auto', margin: 0 }}
+                  />
+                  <select
+                    className="select"
+                    value={acc.type}
+                    onChange={(e) => updateBankAccount(acc.id, 'type', e.target.value as BankAccount['type'])}
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.5rem', height: 'auto', margin: 0 }}
+                  >
+                    <option value="salary">Salary</option>
+                    <option value="savings">Savings</option>
+                    <option value="current">Current</option>
+                    <option value="fd">Fixed Dep.</option>
+                  </select>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <span style={{ position: 'absolute', left: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>₹</span>
+                    <input
+                      className="input"
+                      type="number"
+                      placeholder="0"
+                      value={acc.balance || ''}
+                      onChange={(e) => updateBankAccount(acc.id, 'balance', Number(e.target.value))}
+                      style={{ fontSize: '0.8rem', padding: '0.35rem 0.5rem 0.35rem 1.1rem', height: 'auto', margin: 0, width: '100%' }}
+                    />
+                  </div>
+                  <select
+                    className="select"
+                    value={acc.purpose}
+                    onChange={(e) => updateBankAccount(acc.id, 'purpose', e.target.value)}
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.5rem', height: 'auto', margin: 0 }}
+                  >
+                    {BANK_PURPOSES.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <button className="btn btn-danger btn-sm btn-icon" onClick={() => removeBankAccount(acc.id)} title="Remove" style={{ padding: '0.35rem', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} /></button>
+                </div>
+              ))}
+
+              {/* Total balance */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Total Balance</span>
+                <span style={{ fontWeight: 700, color: 'var(--blue)', fontSize: '1.05rem' }}>{formatCurrency(totalBankBalance)}</span>
+              </div>
+
+              {/* Smart allocation suggestion */}
+              {suggestedSplit && bankAccounts.length >= 2 && (
+                <div style={{ padding: '0.75rem', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: 'var(--radius-md)', marginTop: '0.25rem' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--blue)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Lightbulb size={14} /> Suggested Monthly Allocation
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.78rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>💼 Salary account (receive income)</span>
+                      <span style={{ fontWeight: 500 }}>{formatCurrency(suggestedSplit.salary)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>🛒 Expenses account (bills, groceries)</span>
+                      <span style={{ fontWeight: 500 }}>{formatCurrency(suggestedSplit.expenses)}</span>
+                    </div>
+                    {suggestedSplit.emergency > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>🛡️ Emergency fund (liquid savings)</span>
+                        <span style={{ fontWeight: 500, color: 'var(--gold)' }}>{formatCurrency(suggestedSplit.emergency)}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>📈 Investments (SIPs, stocks, MFs)</span>
+                      <span style={{ fontWeight: 500, color: 'var(--green)' }}>{formatCurrency(suggestedSplit.investments)}</span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                    💡 Transfer monthly expenses to a separate account on salary day. Keep emergency fund in a high-interest savings or liquid mutual fund.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

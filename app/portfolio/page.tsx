@@ -1,8 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getInvestments, saveInvestment, deleteInvestment, getCustomInvestments, saveCustomInvestments } from '@/lib/storage';
+import { getInvestments, saveInvestment, deleteInvestment, getCustomInvestments, saveCustomInvestments, getProfile, getGoals } from '@/lib/storage';
 import { formatCurrency, formatPercent, formatDate, generateId } from '@/lib/formatters';
-import type { Investment } from '@/types';
+import { rebalancePlan } from '@/lib/planning';
+import type { Investment, UserProfile, Goal } from '@/types';
 import { Plus, Trash2, Edit2, X, Download, Printer, Filter } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
@@ -10,7 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 
 const EMPTY: Omit<Investment, 'id' | 'lastUpdated' | 'startDate'> = {
   name: '', type: 'mutual_fund', investedAmount: 0, currentValue: 0,
-  quantity: undefined, buyPrice: undefined, sipAmount: undefined, dividends: 0, notes: '',
+  quantity: undefined, buyPrice: undefined, sipAmount: undefined, dividends: 0, notes: '', goalId: '',
 };
 
 export default function PortfolioPage() {
@@ -22,10 +23,14 @@ export default function PortfolioPage() {
   const [assetTypes, setAssetTypes] = useState<{ id: string; label: string; color: string; icon: string }[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showTypeInput, setShowTypeInput] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const { success } = useToast();
 
   const reload = () => {
     setInvestments(getInvestments());
+    setProfile(getProfile());
+    setGoals(getGoals());
     const custom = getCustomInvestments();
     const compiled = custom.map(c => ({
       id: c.id,
@@ -69,7 +74,7 @@ export default function PortfolioPage() {
   const upd = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
   const openAdd = () => { setForm({ ...EMPTY, startDate: new Date().toISOString().split('T')[0] }); setEditId(null); setShowModal(true); };
   const openEdit = (inv: Investment) => {
-    setForm({ name: inv.name, type: inv.type, investedAmount: inv.investedAmount, currentValue: inv.currentValue, quantity: inv.quantity, buyPrice: inv.buyPrice, sipAmount: inv.sipAmount, dividends: inv.dividends || 0, notes: inv.notes || '', startDate: inv.startDate });
+    setForm({ name: inv.name, type: inv.type, investedAmount: inv.investedAmount, currentValue: inv.currentValue, quantity: inv.quantity, buyPrice: inv.buyPrice, sipAmount: inv.sipAmount, dividends: inv.dividends || 0, notes: inv.notes || '', goalId: inv.goalId || '', startDate: inv.startDate });
     setEditId(inv.id); setShowModal(true);
   };
   const save = () => {
@@ -174,6 +179,13 @@ export default function PortfolioPage() {
   const totalPL = totalCurrent - totalInvested;
   const plPct = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
 
+  // I1: use the previously-orphaned sipAmount and dividends fields
+  const totalSIP = investments.reduce((s, i) => s + (i.sipAmount || 0), 0);
+  const totalDividends = investments.reduce((s, i) => s + (i.dividends || 0), 0);
+  // Total return includes dividends received, not just capital appreciation.
+  const totalReturn = totalPL + totalDividends;
+  const totalReturnPct = totalInvested > 0 ? (totalReturn / totalInvested) * 100 : 0;
+
   const pieData = Object.entries(
     investments.reduce((acc, inv) => { acc[inv.type] = (acc[inv.type] || 0) + inv.currentValue; return acc; }, {} as Record<string, number>)
   ).map(([typeId, value]) => {
@@ -182,6 +194,10 @@ export default function PortfolioPage() {
   });
 
   const types = [...new Set(investments.map((i) => i.type))];
+
+  // I2: risk-based rebalance plan (replaces the old hardcoded target weights)
+  const currentByType = investments.reduce((acc, i) => { acc[i.type] = (acc[i.type] || 0) + i.currentValue; return acc; }, {} as Record<string, number>);
+  const rebalance = rebalancePlan(currentByType, profile?.riskAppetite);
 
   return (
     <div className="animate-fade">
@@ -229,12 +245,15 @@ export default function PortfolioPage() {
           <div className="stat-value" style={{ color: totalPL >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {totalPL >= 0 ? '+' : ''}{formatCurrency(totalPL)}
           </div>
-          <div className="stat-sub" style={{ color: totalPL >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPercent(plPct)}</div>
+          <div className="stat-sub" style={{ color: totalPL >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            {formatPercent(plPct)}
+            {totalDividends > 0 && <span style={{ color: 'var(--text-muted)' }}> · incl. div: {formatPercent(totalReturnPct)}</span>}
+          </div>
         </div>
         <div className="stat-card stat-card-purple">
-          <div className="stat-label">Asset Classes</div>
-          <div className="stat-value">{types.length}</div>
-          <div className="stat-sub">{types.map((t) => getAssetType(t).icon).join(' ')}</div>
+          <div className="stat-label">Monthly SIP</div>
+          <div className="stat-value">{formatCurrency(totalSIP)}</div>
+          <div className="stat-sub">{types.length} asset class{types.length !== 1 ? 'es' : ''}{totalDividends > 0 ? ` · ${formatCurrency(totalDividends)} dividends` : ''}</div>
         </div>
       </div>
 
@@ -260,7 +279,9 @@ export default function PortfolioPage() {
 
         {/* Rebalance Suggestion */}
         <div className="card">
-          <div className="section-title" style={{ fontSize: '1rem', marginBottom: '1rem' }}>📊 Allocation vs Recommended</div>
+          <div className="section-title" style={{ fontSize: '1rem', marginBottom: '1rem' }}>
+            📊 Rebalance Plan <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>· {profile?.riskAppetite || 'moderate'} profile</span>
+          </div>
           {investments.length === 0 ? (
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -275,27 +296,26 @@ export default function PortfolioPage() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {[
-                { type: 'mutual_fund', label: 'Mutual Funds', recommended: 40 },
-                { type: 'stock', label: 'Stocks', recommended: 25 },
-                { type: 'fd', label: 'Fixed Deposits', recommended: 15 },
-                { type: 'gold', label: 'Gold', recommended: 10 },
-                { type: 'ppf', label: 'PPF/EPF', recommended: 10 },
-              ].map(({ type, label, recommended }) => {
-                const current = investments.filter((i) => i.type === type).reduce((s, i) => s + i.currentValue, 0);
-                const pct = totalCurrent > 0 ? Math.round((current / totalCurrent) * 100) : 0;
-                const diff = pct - recommended;
+              {rebalance.map((r) => {
+                const onTarget = Math.abs(r.currentPct - r.targetPct) <= 5;
                 return (
-                  <div key={type}>
+                  <div key={r.id}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '0.3rem' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>{getAssetType(type).icon} {label}</span>
-                      <span style={{ color: Math.abs(diff) <= 5 ? 'var(--green)' : 'var(--gold)' }}>
-                        {pct}% <span style={{ color: 'var(--text-muted)' }}>(rec: {recommended}%)</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>{r.label}</span>
+                      <span style={{ color: onTarget ? 'var(--green)' : 'var(--gold)' }}>
+                        {r.currentPct}% <span style={{ color: 'var(--text-muted)' }}>(target {r.targetPct}%)</span>
                       </span>
                     </div>
-                    <div style={{ height: 6, background: 'var(--track-bg)', borderRadius: 3 }}>
-                      <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: getAssetType(type).color, borderRadius: 3, transition: 'width 0.5s ease' }} />
+                    <div style={{ height: 6, background: 'var(--track-bg)', borderRadius: 3, position: 'relative' }}>
+                      <div style={{ height: '100%', width: `${Math.min(r.currentPct, 100)}%`, background: r.color, borderRadius: 3, transition: 'width 0.5s ease' }} />
+                      {/* target marker */}
+                      <div style={{ position: 'absolute', top: -2, left: `${Math.min(r.targetPct, 100)}%`, width: 2, height: 10, background: 'var(--text-primary)', opacity: 0.5 }} />
                     </div>
+                    {!onTarget && (
+                      <div style={{ fontSize: '0.7rem', color: r.delta > 0 ? 'var(--green)' : 'var(--gold)', marginTop: '0.2rem' }}>
+                        {r.delta > 0 ? `Add ${formatCurrency(r.delta)}` : `Trim ${formatCurrency(-r.delta)}`}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -443,6 +463,16 @@ export default function PortfolioPage() {
                 <label className="form-label">Dividends/Returns Received (₹)</label>
                 <input className="input" type="number" placeholder="0" value={form.dividends || ''} onChange={(e) => upd('dividends', Number(e.target.value))} />
               </div>
+              {goals.length > 0 && (
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Link to Goal <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— optional</span></label>
+                  <select className="input" value={form.goalId || ''} onChange={(e) => upd('goalId', e.target.value)}>
+                    <option value="">Not linked</option>
+                    {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>Linked holdings count toward that goal&apos;s progress.</div>
+                </div>
+              )}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label className="form-label">Notes</label>
                 <textarea className="textarea" placeholder="Any notes..." value={form.notes} onChange={(e) => upd('notes', e.target.value)} />

@@ -58,6 +58,7 @@ export interface Investment {
   lastUpdated: string;
   dividends?: number;
   notes?: string;
+  goalId?: string; // links this holding to a Goal (I3)
 }
 
 export interface ChatMessage {
