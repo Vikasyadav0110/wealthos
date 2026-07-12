@@ -59,6 +59,8 @@ export interface Investment {
   dividends?: number;
   notes?: string;
   goalId?: string; // links this holding to a Goal (I3)
+  interestRate?: number;    // for PPF/EPF/FD: annual interest %
+  withdrawnAmount?: number; // for PPF/EPF: amount withdrawn so far
 }
 
 export interface ChatMessage {

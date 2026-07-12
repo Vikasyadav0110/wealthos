@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 const EMPTY: Omit<Investment, 'id' | 'lastUpdated' | 'startDate'> = {
   name: '', type: 'mutual_fund', investedAmount: 0, currentValue: 0,
   quantity: undefined, buyPrice: undefined, sipAmount: undefined, dividends: 0, notes: '', goalId: '',
+  interestRate: undefined, withdrawnAmount: 0,
 };
 
 export default function PortfolioPage() {
@@ -74,7 +75,7 @@ export default function PortfolioPage() {
   const upd = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
   const openAdd = () => { setForm({ ...EMPTY, startDate: new Date().toISOString().split('T')[0] }); setEditId(null); setShowModal(true); };
   const openEdit = (inv: Investment) => {
-    setForm({ name: inv.name, type: inv.type, investedAmount: inv.investedAmount, currentValue: inv.currentValue, quantity: inv.quantity, buyPrice: inv.buyPrice, sipAmount: inv.sipAmount, dividends: inv.dividends || 0, notes: inv.notes || '', goalId: inv.goalId || '', startDate: inv.startDate });
+    setForm({ name: inv.name, type: inv.type, investedAmount: inv.investedAmount, currentValue: inv.currentValue, quantity: inv.quantity, buyPrice: inv.buyPrice, sipAmount: inv.sipAmount, dividends: inv.dividends || 0, notes: inv.notes || '', goalId: inv.goalId || '', interestRate: inv.interestRate, withdrawnAmount: inv.withdrawnAmount || 0, startDate: inv.startDate });
     setEditId(inv.id); setShowModal(true);
   };
   const save = () => {
@@ -459,6 +460,29 @@ export default function PortfolioPage() {
                   <input className="input" type="number" placeholder="5000" value={form.sipAmount || ''} onChange={(e) => upd('sipAmount', Number(e.target.value))} />
                 </div>
               )}
+              {form.type === 'ppf' && (<>
+                <div className="form-group">
+                  <label className="form-label">Monthly Contribution (₹)</label>
+                  <input className="input" type="number" placeholder="12500" value={form.sipAmount || ''} onChange={(e) => upd('sipAmount', Number(e.target.value))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Interest Rate (% p.a.)</label>
+                  <input className="input" type="number" placeholder="8.25" value={form.interestRate ?? ''} onChange={(e) => upd('interestRate', Number(e.target.value))} />
+                  <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                    {[['EPF', 8.25], ['PPF', 7.1]].map(([label, rate]) => (
+                      <button key={label as string} type="button" className="btn btn-ghost btn-sm"
+                        style={{ fontSize: '0.68rem', padding: '0.15rem 0.45rem', border: form.interestRate === rate ? '1px solid var(--blue)' : undefined }}
+                        onClick={() => upd('interestRate', rate as number)}>
+                        {label} {rate}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Withdrawn So Far (₹) <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— optional</span></label>
+                  <input className="input" type="number" placeholder="0" value={form.withdrawnAmount || ''} onChange={(e) => upd('withdrawnAmount', Number(e.target.value))} />
+                </div>
+              </>)}
               <div className="form-group">
                 <label className="form-label">Dividends/Returns Received (₹)</label>
                 <input className="input" type="number" placeholder="0" value={form.dividends || ''} onChange={(e) => upd('dividends', Number(e.target.value))} />
