@@ -16,10 +16,79 @@ const KEYS = {
 };
 
 
+// --- In-Memory Store & Persistence ---
+
+// In-memory mirror of the durable file storage
+let store: Record<string, string> = {};
+let isHydrated = false;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Immediately persist the in-memory store to the server API
+export async function flush(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (persistTimer) clearTimeout(persistTimer);
+  try {
+    await fetch('/api/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(store)
+    });
+  } catch (err) {
+    console.error('Failed to flush storage to server:', err);
+  }
+}
+
+function schedulePersist() {
+  if (typeof window === 'undefined') return;
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(flush, 500);
+}
+
+// Hydrate from the server API, falling back to seeding from localStorage if file is empty
+export async function hydrate(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch('/api/data');
+    const json = await res.json();
+    
+    if (json.data && Object.keys(json.data).length > 0) {
+      // File has data, populate in-memory store and mirror to localStorage
+      store = json.data;
+      Object.entries(store).forEach(([k, v]) => {
+        try { localStorage.setItem(k, v); } catch {}
+      });
+    } else {
+      // File is empty, seed from localStorage if it has data
+      const localKeys = Object.keys(localStorage).filter(k => k.startsWith('wealthos_'));
+      if (localKeys.length > 0) {
+        localKeys.forEach(k => {
+          const val = localStorage.getItem(k);
+          if (val !== null) store[k] = val;
+        });
+        await flush(); // Push migration to server
+      }
+    }
+  } catch (err) {
+    console.error('Failed to hydrate storage from server:', err);
+    // Fallback: seed from localStorage if server fails
+    Object.keys(localStorage).filter(k => k.startsWith('wealthos_')).forEach(k => {
+      const val = localStorage.getItem(k);
+      if (val !== null) store[k] = val;
+    });
+  } finally {
+    isHydrated = true;
+  }
+}
+
 function get<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
-    const raw = localStorage.getItem(key);
+    let raw: string | null = null;
+    if (isHydrated) {
+      raw = store[key] || null;
+    } else {
+      raw = localStorage.getItem(key);
+    }
     return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
     return fallback;
@@ -32,8 +101,12 @@ export const STORAGE_ERROR_EVENT = 'wealthos:storage-error';
 
 function set<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
+  const strVal = JSON.stringify(value);
+  store[key] = strVal;
+  schedulePersist();
+  
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(key, strVal);
   } catch (err) {
     const isQuota =
       err instanceof DOMException &&

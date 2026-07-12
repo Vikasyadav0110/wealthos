@@ -4,7 +4,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import Onboarding from '@/components/onboarding/Onboarding';
 import LockScreen from '@/components/auth/LockScreen';
-import { getProfile, STORAGE_ERROR_EVENT } from '@/lib/storage';
+import { getProfile, STORAGE_ERROR_EVENT, hydrate, flush } from '@/lib/storage';
 import { isAuthEnabled, isSessionExpired, updateLastActive } from '@/lib/auth';
 import { useTheme } from '@/lib/theme';
 import { useToast } from '@/components/ui/Toast';
@@ -36,12 +36,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const profile = getProfile();
-    setOnboarded(!!profile?.onboardingComplete);
+    const init = async () => {
+      await hydrate();
+      const profile = getProfile();
+      setOnboarded(!!profile?.onboardingComplete);
 
-    if (isAuthEnabled() && isSessionExpired()) {
-      setLocked(true);
-    }
+      if (isAuthEnabled() && isSessionExpired()) {
+        setLocked(true);
+      }
+    };
+    init();
 
     const handleActivity = () => updateLastActive();
     const EVENTS = ['mousedown', 'keydown', 'touchstart', 'scroll'];
@@ -51,13 +55,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     const handleVisibility = () => {
       if (!document.hidden) checkLock();
+      else flush();
     };
     document.addEventListener('visibilitychange', handleVisibility);
+    
+    const handleBeforeUnload = () => flush();
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       EVENTS.forEach((e) => window.removeEventListener(e, handleActivity));
       clearInterval(lockCheck);
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [checkLock]);
 
