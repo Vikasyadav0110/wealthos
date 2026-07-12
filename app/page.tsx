@@ -7,7 +7,7 @@ import { formatCurrency, formatPercent, monthLabel } from '@/lib/formatters';
 import { healthBreakdown } from '@/lib/health';
 import { computeTakeHome } from '@/lib/income';
 import type { UserProfile, SalaryEntry, Investment, Goal } from '@/types';
-import { Wallet, TrendingUp, PieChart, Bot, ArrowRight, AlertTriangle, CheckCircle, Newspaper, Compass, Lightbulb } from 'lucide-react';
+import { Wallet, TrendingUp, PieChart, Bot, ArrowRight, AlertTriangle, CheckCircle, Newspaper, Compass, Lightbulb, ChevronDown } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 // Animated count-up hook
@@ -38,6 +38,8 @@ export default function Dashboard() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(true);
+  const [insightsShowAll, setInsightsShowAll] = useState(false);
   // How many recent months the trend chart shows (0 = all)
   const [chartWindow, setChartWindow] = useState<number>(6);
 
@@ -101,7 +103,14 @@ export default function Dashboard() {
     { href: '/news', icon: Newspaper, label: 'Market News', color: 'var(--blue)', bg: 'var(--blue-glow)' },
   ];
 
-  const insights = buildInsights({ profile, entries: salaryEntries, investments, goals });
+  // Warnings first, then info, then success (most actionable at the top)
+  const INSIGHT_ORDER = { warning: 0, info: 1, success: 2 };
+  const insights = buildInsights({ profile, entries: salaryEntries, investments, goals })
+    .slice()
+    .sort((a, b) => INSIGHT_ORDER[a.level] - INSIGHT_ORDER[b.level]);
+  const warningCount = insights.filter((i) => i.level === 'warning').length;
+  const COLLAPSED_COUNT = 3;
+  const visibleInsights = insightsShowAll ? insights : insights.slice(0, COLLAPSED_COUNT);
 
   return (
     <div className="animate-fade">
@@ -113,25 +122,48 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Insights & Alerts */}
+      {/* Insights & Alerts — collapsible so it doesn't push the dashboard down */}
       {insights.length > 0 && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-            <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>
-              <Lightbulb size={16} style={{ display: 'inline', marginRight: '0.5rem', color: 'var(--gold)' }} />
-              Insights & Alerts
+          <button
+            onClick={() => setInsightsOpen((o) => !o)}
+            aria-expanded={insightsOpen}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem',
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', textAlign: 'left' }}
+          >
+            <div className="section-title" style={{ fontSize: '1rem', margin: 0, display: 'flex', alignItems: 'center' }}>
+              <Lightbulb size={16} style={{ marginRight: '0.5rem', color: 'var(--gold)' }} />
+              Insights &amp; Alerts
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{insights.length} to review</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {insights.map((a) => (
-              <div key={a.id} className={`alert alert-${a.level === 'warning' ? 'warning' : a.level === 'success' ? 'success' : 'info'}`}
-                style={{ alignItems: 'flex-start' }}>
-                {a.level === 'warning' ? <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : a.level === 'success' ? <CheckCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <ArrowRight size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
-                <span><strong>{a.title}</strong> — {a.detail}</span>
-              </div>
-            ))}
-          </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              {/* Warning peek so critical items aren't hidden when collapsed */}
+              {!insightsOpen && warningCount > 0 && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', fontWeight: 600, color: 'var(--gold)' }}>
+                  <AlertTriangle size={13} /> {warningCount} alert{warningCount !== 1 ? 's' : ''}
+                </span>
+              )}
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{insights.length} to review</span>
+              <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: insightsOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            </div>
+          </button>
+
+          {insightsOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
+              {visibleInsights.map((a) => (
+                <div key={a.id} className={`alert alert-${a.level === 'warning' ? 'warning' : a.level === 'success' ? 'success' : 'info'}`}
+                  style={{ alignItems: 'flex-start' }}>
+                  {a.level === 'warning' ? <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : a.level === 'success' ? <CheckCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <ArrowRight size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
+                  <span><strong>{a.title}</strong> — {a.detail}</span>
+                </div>
+              ))}
+              {insights.length > COLLAPSED_COUNT && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setInsightsShowAll((s) => !s)}
+                  style={{ alignSelf: 'flex-start', fontSize: '0.78rem' }}>
+                  {insightsShowAll ? 'Show less' : `Show ${insights.length - COLLAPSED_COUNT} more`}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
