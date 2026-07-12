@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getProfile } from '@/lib/storage';
+import { getProfile, getSalaryEntries } from '@/lib/storage';
 import { formatCurrency } from '@/lib/formatters';
 import { Coins, Info, ShieldCheck } from 'lucide-react';
 
@@ -16,7 +16,15 @@ export default function TaxPage() {
 
   useEffect(() => {
     const p = getProfile();
-    if (p?.monthlySalary) {
+    const latest = getSalaryEntries()[0];
+    // Prefer the latest logged salary entry (real gross + HRA) over the profile estimate.
+    if (latest) {
+      setParams((prev) => ({
+        ...prev,
+        gross: latest.grossSalary * 12,
+        hra: latest.hra > 0 ? latest.hra * 12 : prev.hra,
+      }));
+    } else if (p?.monthlySalary) {
       setParams((prev) => ({ ...prev, gross: p.monthlySalary * 12 }));
     }
   }, []);

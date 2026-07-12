@@ -4,7 +4,7 @@ import { getSalaryEntries, saveSalaryEntry, deleteSalaryEntry, getDailyExpenses,
 import { formatCurrency, monthLabel, currentMonth, generateId } from '@/lib/formatters';
 import { computeTakeHome, computeIncomeBreakdown } from '@/lib/income';
 import type { SalaryEntry, IncomeSource, ExpenseItem } from '@/types';
-import { Plus, Trash2, X, TrendingUp, DollarSign, Receipt, Eye, Download, Printer, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, X, TrendingUp, DollarSign, Receipt, Eye, Download, Printer, ChevronDown, Copy, ArrowUp, ArrowDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
@@ -23,94 +23,7 @@ const EMPTY_EXPENSE = (): ExpenseItem => ({
   notes: ''
 });
 
-// Simplified cash-flow "Sankey": income sources → in-hand (after deductions)
-// → expenses / savings. Node heights and SVG ribbon widths are proportional to
-// amount. Pure CSS/SVG — no charting dependency.
-function CashFlow({ incomes, deductions, takeHome, expenses, savings }: {
-  incomes: { name: string; value: number; color: string }[];
-  deductions: number;
-  takeHome: number;
-  expenses: number;
-  savings: number;
-}) {
-  const H = 280;                 // taller so tall stacks + labels never clip
-  const PAD = 14;                // vertical breathing room top & bottom
-  const usableH = H - PAD * 2;
-  const gross = incomes.reduce((s, i) => s + i.value, 0);
-  const scaleRef = Math.max(gross, 1);
-  const px = (v: number) => Math.max((v / scaleRef) * usableH, v > 0 ? 4 : 0); // amount → pixels
 
-  // Left column: income sources, stacked. Middle: in-hand + deductions. Right: expenses + savings.
-  const colX = { left: 12, mid: 200, right: 388 };
-  const nodeW = 16, width = 460;
-
-  // Stack helper: returns [{y, h, ...item}] centered vertically.
-  const stack = <T extends { value: number }>(items: T[]) => {
-    const totalH = items.reduce((s, i) => s + px(i.value), 0) + (items.length - 1) * 4;
-    let y = PAD + Math.max((usableH - totalH) / 2, 0); // center within the padded area
-    return items.map((it) => { const h = px(it.value); const seg = { y, h, item: it }; y += h + 4; return seg; });
-  };
-
-  const leftNodes = stack(incomes);
-  const midItems = [
-    { label: 'In-hand', value: takeHome, color: 'var(--blue)' },
-    ...(deductions > 0 ? [{ label: 'Deductions', value: deductions, color: 'var(--red)' }] : []),
-  ];
-  const midNodes = stack(midItems);
-  const rightItems = [
-    ...(savings > 0 ? [{ label: 'Savings', value: savings, color: 'var(--green)' }] : []),
-    ...(expenses > 0 ? [{ label: 'Expenses', value: expenses, color: 'var(--gold)' }] : []),
-  ];
-  const rightNodes = stack(rightItems);
-  const inHandNode = midNodes.find((n) => n.item.label === 'In-hand');
-
-  const ribbon = (x1: number, y1: number, x2: number, y2: number, w: number, color: string, key: string) => {
-    const midX = (x1 + x2) / 2;
-    return (
-      <path key={key}
-        d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
-        stroke={color} strokeWidth={Math.max(w, 2)} fill="none" opacity={0.28} strokeLinecap="butt" />
-    );
-  };
-
-  if (gross <= 0) return <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No income to chart for this month.</div>;
-
-  return (
-    <div style={{ overflowX: 'auto' }}>
-      <svg width={width} height={H} style={{ minWidth: width }}>
-        {/* ribbons: each income source → in-hand node */}
-        {inHandNode && leftNodes.map((n, i) =>
-          ribbon(colX.left + nodeW, n.y + n.h / 2, colX.mid, inHandNode.y + inHandNode.h / 2, n.h, n.item.color, 'lr' + i)
-        )}
-        {/* in-hand → each right node */}
-        {inHandNode && rightNodes.map((n, i) =>
-          ribbon(colX.mid + nodeW, inHandNode.y + inHandNode.h / 2, colX.right, n.y + n.h / 2, n.h, n.item.color, 'rr' + i)
-        )}
-        {/* left nodes */}
-        {leftNodes.map((n, i) => (
-          <g key={'ln' + i}>
-            <rect x={colX.left} y={n.y} width={nodeW} height={n.h} rx={3} fill={n.item.color} />
-            <text x={colX.left + nodeW + 6} y={n.y + n.h / 2} dominantBaseline="middle" fontSize={10} fill="var(--text-secondary)">{n.item.name}</text>
-          </g>
-        ))}
-        {/* mid nodes */}
-        {midNodes.map((n, i) => (
-          <g key={'mn' + i}>
-            <rect x={colX.mid} y={n.y} width={nodeW} height={n.h} rx={3} fill={n.item.color} />
-            <text x={colX.mid + nodeW + 6} y={n.y + n.h / 2} dominantBaseline="middle" fontSize={10} fill="var(--text-secondary)">{n.item.label}</text>
-          </g>
-        ))}
-        {/* right nodes */}
-        {rightNodes.map((n, i) => (
-          <g key={'rn' + i}>
-            <rect x={colX.right} y={n.y} width={nodeW} height={n.h} rx={3} fill={n.item.color} />
-            <text x={colX.right - 6} y={n.y + n.h / 2} dominantBaseline="middle" textAnchor="end" fontSize={10} fill="var(--text-secondary)">{n.item.label}</text>
-          </g>
-        ))}
-      </svg>
-    </div>
-  );
-}
 
 export default function SalaryPage() {
   const [entries, setEntries] = useState<SalaryEntry[]>([]);
@@ -213,8 +126,19 @@ export default function SalaryPage() {
   const syncDailyExpensesForMonth = (m: string) => {
     const dailyLogs = getDailyExpenses();
     const filtered = dailyLogs.filter((log) => log.date.startsWith(m));
+    
+    // Get existing manual expense items (non-empty, and not auto-compiled)
+    const existingManual = expenseItems.filter(
+      (e) => e.amount > 0 && e.notes !== 'Auto-compiled from daily tracker'
+    );
+
     if (filtered.length === 0) {
-      setExpenseItems([EMPTY_EXPENSE()]);
+      if (existingManual.length > 0) {
+        setExpenseItems(existingManual);
+      } else {
+        setExpenseItems([EMPTY_EXPENSE()]);
+      }
+      info(`No daily expenses logged for ${m}. Preserved manual entries.`);
       return;
     }
 
@@ -230,8 +154,16 @@ export default function SalaryPage() {
       notes: `Auto-compiled from daily tracker`
     }));
 
-    setExpenseItems(compiled);
-    info(`Imported ${compiled.length} expense items for ${m}`);
+    // Merge: Keep compiled entries, and preserve manual entries for categories
+    // that are NOT present in the compiled entries.
+    const compiledCategories = new Set(compiled.map((c) => c.category));
+    const preservedManual = existingManual.filter(
+      (me) => !compiledCategories.has(me.category)
+    );
+
+    const merged = [...compiled, ...preservedManual];
+    setExpenseItems(merged.length > 0 ? merged : [EMPTY_EXPENSE()]);
+    info(`Imported ${compiled.length} categories from daily tracker. Preserved ${preservedManual.length} manual entries.`);
   };
 
   const openAdd = () => {
@@ -248,6 +180,21 @@ export default function SalaryPage() {
     setShowModal(true);
     // Auto-load daily expenses
     syncDailyExpensesForMonth(curM);
+  };
+
+  // Prefill the (already-open) Add form from the most recent month, keeping the
+  // current month. Income sources and deductions carry over; expenses reset.
+  const copyLastMonth = () => {
+    const prev = entries[0];
+    if (!prev) { info('No previous month to copy from'); return; }
+    setBasicSalary(prev.basicSalary);
+    setHra(prev.hra);
+    setPf(prev.pf);
+    setTax(prev.tax);
+    setOtherDeductions(prev.otherDeductions);
+    setIncomes((prev.incomes && prev.incomes.length > 0 ? prev.incomes : [{ id: generateId(), sourceName: 'Primary Salary', amount: prev.grossSalary, type: 'primary' as const }])
+      .map((i) => ({ ...i, id: generateId() })));
+    info(`Copied income & deductions from ${monthLabel(prev.month)}`);
   };
 
   const openEdit = (e: SalaryEntry) => {
@@ -460,6 +407,19 @@ export default function SalaryPage() {
   const heroTakeHome = activeEntry ? computeTakeHome(activeEntry) : 0;
   const heroSavingsRate = heroTakeHome > 0 && activeEntry ? Math.round((activeEntry.savings / heroTakeHome) * 100) : 0;
   const heroTopExpense = activeExpensesData.slice().sort((a, b) => b.value - a.value)[0] || null;
+
+  // ── S2: annualized projection + year-to-date (based on the latest month) ──
+  const latestEntry = entries[0];
+  const annualIncomeProjection = latestEntry ? computeTakeHome(latestEntry) * 12 : 0;
+  const currentYear = new Date().toISOString().slice(0, 4);
+  const ytdEntries = entries.filter((e) => e.month.startsWith(currentYear));
+  const ytdIncome = ytdEntries.reduce((s, e) => s + computeTakeHome(e), 0);
+  const ytdSaved = ytdEntries.reduce((s, e) => s + e.savings, 0);
+
+  // ── S4: month-over-month deltas (latest vs previous) ──
+  const prevEntry = entries[1];
+  const incomeDelta = latestEntry && prevEntry ? computeTakeHome(latestEntry) - computeTakeHome(prevEntry) : null;
+  const savingsDelta = latestEntry && prevEntry ? latestEntry.savings - prevEntry.savings : null;
   // Savings gauge geometry: a 270° arc, filled to the savings rate.
   const GAUGE = { r: 46, stroke: 9, sweep: 270 };
   const gaugeCirc = 2 * Math.PI * GAUGE.r;
@@ -550,6 +510,19 @@ export default function SalaryPage() {
               {heroSavingsRate < 20 && <span style={{ color: 'var(--gold)', marginLeft: '0.5rem' }}>· aim for 20%+ savings</span>}
               {heroSavingsRate >= 20 && <span style={{ color: 'var(--green)', marginLeft: '0.5rem' }}>· on track ✅</span>}
             </div>
+            {/* S4: month-over-month deltas (only when viewing the latest month) */}
+            {activeEntry.id === latestEntry?.id && incomeDelta !== null && savingsDelta !== null && (
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.4rem', fontSize: '0.75rem', flexWrap: 'wrap' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', color: incomeDelta >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  {incomeDelta >= 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+                  {formatCurrency(Math.abs(incomeDelta))} income vs last month
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', color: savingsDelta >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  {savingsDelta >= 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+                  {formatCurrency(Math.abs(savingsDelta))} savings vs last month
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Tiles */}
@@ -585,18 +558,29 @@ export default function SalaryPage() {
             <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{entries.length}</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>months tracked</span>
           </div>
+          {/* S2: annualized projection + YTD */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--blue)' }}>{formatCurrency(annualIncomeProjection)}</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>projected annual income</span>
+          </div>
+          {ytdEntries.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--green)' }}>{formatCurrency(ytdSaved)}</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>saved YTD (of {formatCurrency(ytdIncome)})</span>
+            </div>
+          )}
         </div>
       )}
 
       {/* Charts Section */}
       {chartData.length > 0 && (
         <div className="grid-3" style={{ marginBottom: '1.5rem' }}>
-          {/* Trend + cash-flow (left, spans 2) */}
+          {/* Life Trend chart (left, spans 2) */}
           <div className="card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
               <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>
                 <TrendingUp size={16} style={{ display: 'inline', marginRight: '0.5rem', color: 'var(--blue)' }} />
-                Trend
+                Life Trend
               </div>
               <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 {/* Series toggles */}
@@ -615,43 +599,51 @@ export default function SalaryPage() {
                 </select>
               </div>
             </div>
-            {/* Trend chart + cash-flow, side by side (stack on narrow screens) */}
-            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem', alignItems: 'stretch' }}>
-              <div style={{ minHeight: 260, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ flex: 1, minHeight: 240 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} barSize={18}>
-                      <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false}
-                        tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                      <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                        formatter={(v) => [typeof v === 'number' ? `₹${(v as number).toLocaleString('en-IN')}` : v, '']} />
-                      {trendSeries.income && <Bar dataKey="salary" fill="var(--blue)" radius={[4, 4, 0, 0]} name="Income" />}
-                      {trendSeries.savings && <Bar dataKey="savings" fill="var(--green)" radius={[4, 4, 0, 0]} name="Savings" />}
-                      {trendSeries.expenses && <Bar dataKey="expenses" fill="var(--gold)" radius={[4, 4, 0, 0]} name="Expenses" opacity={0.8} />}
-                    </BarChart>
-                  </ResponsiveContainer>
+            {/* Bar chart */}
+            <div style={{ flex: 1, minHeight: 280 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} barSize={18}>
+                  <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false}
+                    tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                    formatter={(v) => [typeof v === 'number' ? `₹${(v as number).toLocaleString('en-IN')}` : v, '']} />
+                  {trendSeries.income && <Bar dataKey="salary" fill="var(--blue)" radius={[4, 4, 0, 0]} name="Income" />}
+                  {trendSeries.savings && <Bar dataKey="savings" fill="var(--green)" radius={[4, 4, 0, 0]} name="Savings" />}
+                  {trendSeries.expenses && <Bar dataKey="expenses" fill="var(--gold)" radius={[4, 4, 0, 0]} name="Expenses" opacity={0.8} />}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Compact numerical cash-flow summary */}
+            {activeEntry && activeBreakdown && (
+              <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)', display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                  Cash Flow · {monthLabel(activeEntry.month)}
+                </div>
+                <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
+                  {allTimeIncomeDataForEntry(activeEntry).map((src) => (
+                    <div key={src.name} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.78rem' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: src.color, flexShrink: 0 }} />
+                      <span style={{ color: 'var(--text-secondary)' }}>{src.name}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{formatCurrency(src.value)}</span>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: '0.78rem', color: 'var(--red)' }}>
+                    Deductions <span style={{ fontWeight: 600 }}>−{formatCurrency(activeBreakdown.deductions)}</span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--blue)' }}>
+                    In-hand <span style={{ fontWeight: 600 }}>{formatCurrency(heroTakeHome)}</span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--gold)' }}>
+                    Spent <span style={{ fontWeight: 600 }}>{formatCurrency(activeEntry.expenses)}</span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--green)' }}>
+                    Saved <span style={{ fontWeight: 600 }}>{formatCurrency(activeEntry.savings)}</span>
+                  </div>
                 </div>
               </div>
-
-              {/* Cash-flow (selected month): sources → in-hand → out */}
-              {activeEntry && activeBreakdown && (
-                <div style={{ borderLeft: '1px solid var(--border)', paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column' }}>
-                  <div className="section-title" style={{ fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-                    Cash flow · {monthLabel(activeEntry.month)}
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                    <CashFlow
-                      incomes={allTimeIncomeDataForEntry(activeEntry)}
-                      deductions={activeBreakdown.deductions}
-                      takeHome={heroTakeHome}
-                      expenses={activeEntry.expenses}
-                      savings={activeEntry.savings}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
           {/* Breakdown Charts (Latest Month / Selected Month) */}
@@ -733,54 +725,64 @@ export default function SalaryPage() {
                   </div>
                 )}
 
-                {/* 3. All income list — every source, all-time amount + share */}
-                {allTimeIncomeData.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>All Income <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(all months)</span></div>
-                    {allTimeIncomeData.map((d) => {
-                      const pct = allTimeIncomeTotal > 0 ? Math.round((d.value / allTimeIncomeTotal) * 100) : 0;
-                      return (
-                        <div key={d.name}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                            <span style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
-                            <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(d.value)} ({pct}%)</span>
-                          </div>
-                          <div style={{ height: 4, background: 'var(--track-bg)', borderRadius: 2 }}>
-                            <div style={{ height: '100%', width: `${pct}%`, background: d.color, borderRadius: 2 }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', borderTop: '1px solid var(--border)', paddingTop: '0.4rem' }}>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Total</span>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatCurrency(allTimeIncomeTotal)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. Expense categories progress bars */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Expenses by Category <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({monthLabel(activeEntry.month)})</span></div>
-                  {activeExpensesData.slice(0, 4).map((exp) => {
-                    const pct = activeEntry.expenses > 0 ? Math.round((exp.value / activeEntry.expenses) * 100) : 0;
-                    return (
-                      <div key={exp.category}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>{exp.name}</span>
-                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(exp.value)} ({pct}%)</span>
-                        </div>
-                        <div style={{ height: 4, background: 'var(--track-bg)', borderRadius: 2 }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: exp.color, borderRadius: 2 }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {activeExpensesData.length === 0 && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No expense data</div>}
-                </div>
               </div>
             ) : (
               <div className="empty-state">No entry selected</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* All Income & Expenses by Category — full-width row below charts */}
+      {activeEntry && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+          {/* All Income (all months) */}
+          {allTimeIncomeData.length > 0 && (
+            <div className="card">
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>All Income <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(all months)</span></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {allTimeIncomeData.map((d) => {
+                  const pct = allTimeIncomeTotal > 0 ? Math.round((d.value / allTimeIncomeTotal) * 100) : 0;
+                  return (
+                    <div key={d.name}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '0.25rem' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
+                        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(d.value)} ({pct}%)</span>
+                      </div>
+                      <div style={{ height: 5, background: 'var(--track-bg)', borderRadius: 3 }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: d.color, borderRadius: 3, transition: 'width 0.3s ease' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem', marginTop: '0.15rem' }}>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Total</span>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatCurrency(allTimeIncomeTotal)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Expenses by Category */}
+          <div className="card">
+            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>Expenses by Category <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({monthLabel(activeEntry.month)})</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              {activeExpensesData.map((exp) => {
+                const pct = activeEntry.expenses > 0 ? Math.round((exp.value / activeEntry.expenses) * 100) : 0;
+                return (
+                  <div key={exp.category}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '0.25rem' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{exp.name}</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{formatCurrency(exp.value)} ({pct}%)</span>
+                    </div>
+                    <div style={{ height: 5, background: 'var(--track-bg)', borderRadius: 3 }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: exp.color, borderRadius: 3, transition: 'width 0.3s ease' }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {activeExpensesData.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No expense data</div>}
+            </div>
           </div>
         </div>
       )}
@@ -884,7 +886,14 @@ export default function SalaryPage() {
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 800 }}>
             <div className="modal-header">
               <h3 className="modal-title">{editId ? 'Edit' : 'Add'} Monthly Cash Flow</h3>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                {!editId && entries.length > 0 && (
+                  <button className="btn btn-ghost btn-sm" onClick={copyLastMonth} title="Prefill from last month">
+                    <Copy size={14} /> Copy last month
+                  </button>
+                )}
+                <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button>
+              </div>
             </div>
 
             <div className="form-group" style={{ marginBottom: '1.25rem' }}>
@@ -916,6 +925,21 @@ export default function SalaryPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginTop: '0.75rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Total Gross Income:</span>
                 <span style={{ fontWeight: 600, color: 'var(--blue)' }}>{formatCurrency(totalIncomes)}</span>
+              </div>
+            </div>
+
+            {/* Salary structure (optional) — Basic & HRA feed the Tax Planner */}
+            <div className="card-sm" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)', marginBottom: '1.25rem' }}>
+              <h4 style={{ color: 'var(--blue)', marginBottom: '0.75rem' }}>🧾 Salary Structure <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>— optional, used for tax planning</span></h4>
+              <div className="form-grid form-grid-3">
+                <div className="form-group">
+                  <label className="form-label">Basic Salary</label>
+                  <input className="input" type="number" placeholder="Basic" value={basicSalary || ''} onChange={(e) => setBasicSalary(Number(e.target.value))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">HRA Received</label>
+                  <input className="input" type="number" placeholder="HRA" value={hra || ''} onChange={(e) => setHra(Number(e.target.value))} />
+                </div>
               </div>
             </div>
 
