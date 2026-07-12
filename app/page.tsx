@@ -7,7 +7,7 @@ import { formatCurrency, formatPercent, monthLabel } from '@/lib/formatters';
 import { healthBreakdown } from '@/lib/health';
 import { computeTakeHome } from '@/lib/income';
 import type { UserProfile, SalaryEntry, Investment, Goal } from '@/types';
-import { Wallet, TrendingUp, PieChart, Bot, ArrowRight, AlertTriangle, CheckCircle, Newspaper, Compass } from 'lucide-react';
+import { Wallet, TrendingUp, PieChart, Bot, ArrowRight, AlertTriangle, CheckCircle, Newspaper, Compass, Lightbulb } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 // Animated count-up hook
@@ -113,16 +113,25 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Proactive insights */}
+      {/* Insights & Alerts */}
       {insights.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
-          {insights.map((a) => (
-            <div key={a.id} className={`alert alert-${a.level === 'warning' ? 'warning' : a.level === 'success' ? 'success' : 'info'}`}
-              style={{ alignItems: 'flex-start' }}>
-              {a.level === 'warning' ? <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : a.level === 'success' ? <CheckCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <ArrowRight size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
-              <span><strong>{a.title}</strong> — {a.detail}</span>
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <div className="section-title" style={{ fontSize: '1rem', margin: 0 }}>
+              <Lightbulb size={16} style={{ display: 'inline', marginRight: '0.5rem', color: 'var(--gold)' }} />
+              Insights & Alerts
             </div>
-          ))}
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{insights.length} to review</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {insights.map((a) => (
+              <div key={a.id} className={`alert alert-${a.level === 'warning' ? 'warning' : a.level === 'success' ? 'success' : 'info'}`}
+                style={{ alignItems: 'flex-start' }}>
+                {a.level === 'warning' ? <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : a.level === 'success' ? <CheckCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} /> : <ArrowRight size={16} style={{ flexShrink: 0, marginTop: 2 }} />}
+                <span><strong>{a.title}</strong> — {a.detail}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
