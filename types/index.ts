@@ -61,6 +61,9 @@ export interface Investment {
   goalId?: string; // links this holding to a Goal (I3)
   interestRate?: number;    // for PPF/EPF/FD: annual interest %
   withdrawnAmount?: number; // for PPF/EPF: amount withdrawn so far
+  symbol?: string;          // market id for live prices: CoinGecko id / AMFI scheme code / stock ticker
+  livePrice?: number;       // last fetched unit price (per coin / NAV / share)
+  priceUpdatedAt?: string;  // ISO timestamp of the last live-price refresh
 }
 
 export interface ChatMessage {

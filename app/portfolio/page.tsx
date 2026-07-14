@@ -4,7 +4,7 @@ import { getInvestments, saveInvestment, deleteInvestment, getCustomInvestments,
 import { formatCurrency, formatPercent, formatDate, generateId } from '@/lib/formatters';
 import { rebalancePlan } from '@/lib/planning';
 import type { Investment, UserProfile, Goal } from '@/types';
-import { Plus, Trash2, Edit2, X, Download, Printer, Filter } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Download, Printer, Filter, RefreshCw } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
@@ -12,7 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 const EMPTY: Omit<Investment, 'id' | 'lastUpdated' | 'startDate'> = {
   name: '', type: 'mutual_fund', investedAmount: 0, currentValue: 0,
   quantity: undefined, buyPrice: undefined, sipAmount: undefined, dividends: 0, notes: '', goalId: '',
-  interestRate: undefined, withdrawnAmount: 0,
+  interestRate: undefined, withdrawnAmount: 0, symbol: '',
 };
 
 export default function PortfolioPage() {
@@ -26,7 +26,8 @@ export default function PortfolioPage() {
   const [showTypeInput, setShowTypeInput] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [goals, setGoals] = useState<Goal[]>([]);
-  const { success } = useToast();
+  const [refreshing, setRefreshing] = useState(false);
+  const { success, warning, info } = useToast();
 
   const reload = () => {
     setInvestments(getInvestments());
@@ -75,7 +76,7 @@ export default function PortfolioPage() {
   const upd = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
   const openAdd = () => { setForm({ ...EMPTY, startDate: new Date().toISOString().split('T')[0] }); setEditId(null); setShowModal(true); };
   const openEdit = (inv: Investment) => {
-    setForm({ name: inv.name, type: inv.type, investedAmount: inv.investedAmount, currentValue: inv.currentValue, quantity: inv.quantity, buyPrice: inv.buyPrice, sipAmount: inv.sipAmount, dividends: inv.dividends || 0, notes: inv.notes || '', goalId: inv.goalId || '', interestRate: inv.interestRate, withdrawnAmount: inv.withdrawnAmount || 0, startDate: inv.startDate });
+    setForm({ name: inv.name, type: inv.type, investedAmount: inv.investedAmount, currentValue: inv.currentValue, quantity: inv.quantity, buyPrice: inv.buyPrice, sipAmount: inv.sipAmount, dividends: inv.dividends || 0, notes: inv.notes || '', goalId: inv.goalId || '', interestRate: inv.interestRate, withdrawnAmount: inv.withdrawnAmount || 0, symbol: inv.symbol || '', startDate: inv.startDate });
     setEditId(inv.id); setShowModal(true);
   };
   const save = () => {
@@ -90,6 +91,46 @@ export default function PortfolioPage() {
     reload();
     setConfirmDeleteId(null);
     success('Investment removed');
+  };
+
+  // Fetch live prices for holdings that have a market symbol and update their
+  // current value (unit price × quantity). Holdings without a symbol, or whose
+  // source is unavailable (e.g. stocks with no data source), are left as-is.
+  const refreshPrices = async () => {
+    const priced = investments.filter((i) => i.symbol && i.symbol.trim());
+    if (priced.length === 0) {
+      info('Add a CoinGecko id / AMFI code / symbol to a holding to enable live prices.');
+      return;
+    }
+    setRefreshing(true);
+    try {
+      const res = await fetch('/api/prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ holdings: priced.map((i) => ({ id: i.id, type: i.type, symbol: i.symbol })) }),
+      });
+      const data = await res.json();
+      const results: { id: string; unitPrice: number; status: string; updatedAt: string }[] = data.prices || [];
+      let updated = 0, failed = 0;
+      results.forEach((r) => {
+        const inv = investments.find((i) => i.id === r.id);
+        if (!inv) return;
+        if (r.status === 'ok' && r.unitPrice > 0) {
+          const units = inv.quantity && inv.quantity > 0 ? inv.quantity : 1;
+          saveInvestment({ ...inv, currentValue: Math.round(r.unitPrice * units), livePrice: r.unitPrice, priceUpdatedAt: r.updatedAt, lastUpdated: r.updatedAt });
+          updated++;
+        } else {
+          failed++;
+        }
+      });
+      reload();
+      if (updated > 0) success(`Updated ${updated} holding${updated !== 1 ? 's' : ''} with live prices${failed ? ` · ${failed} unavailable` : ''}`);
+      else warning('No prices could be fetched — check your symbols, or the asset has no live source.');
+    } catch {
+      warning('Could not reach the price service. Please try again.');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const exportToCSV = () => {
@@ -226,7 +267,12 @@ export default function PortfolioPage() {
           <h1>My Portfolio</h1>
           <div className="section-sub">Track all your investments with manual P&L updates</div>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}><Plus size={16} /> Add Investment</button>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost" onClick={refreshPrices} disabled={refreshing} title="Fetch live prices for holdings with a symbol">
+            <RefreshCw size={16} style={{ animation: refreshing ? 'spin 1s linear infinite' : undefined }} /> {refreshing ? 'Refreshing…' : 'Refresh Prices'}
+          </button>
+          <button className="btn btn-primary" onClick={openAdd}><Plus size={16} /> Add Investment</button>
+        </div>
       </div>
 
       {/* Summary */}
@@ -392,7 +438,14 @@ export default function PortfolioPage() {
                       <td><span className="badge badge-blue">{getAssetType(inv.type).icon} {getAssetType(inv.type).label}</span></td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{formatDate(inv.startDate)}</td>
                       <td>{formatCurrency(inv.investedAmount)}</td>
-                      <td style={{ fontWeight: 500 }}>{formatCurrency(inv.currentValue)}</td>
+                      <td style={{ fontWeight: 500 }}>
+                        {formatCurrency(inv.currentValue)}
+                        {inv.priceUpdatedAt && (
+                          <div style={{ fontSize: '0.62rem', color: 'var(--green)', fontWeight: 500 }}>
+                            ● live · {new Date(inv.priceUpdatedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ color: pl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
                         {pl >= 0 ? '+' : ''}{formatCurrency(pl)}
                       </td>
@@ -458,6 +511,22 @@ export default function PortfolioPage() {
                 <div className="form-group">
                   <label className="form-label">Monthly SIP (₹)</label>
                   <input className="input" type="number" placeholder="5000" value={form.sipAmount || ''} onChange={(e) => upd('sipAmount', Number(e.target.value))} />
+                </div>
+              )}
+              {(form.type === 'crypto' || form.type === 'mutual_fund' || form.type === 'stock') && (
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">
+                    {form.type === 'crypto' ? 'CoinGecko ID' : form.type === 'mutual_fund' ? 'AMFI Scheme Code' : 'Stock Symbol'}
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> — for live prices (optional)</span>
+                  </label>
+                  <input className="input"
+                    placeholder={form.type === 'crypto' ? 'e.g. bitcoin' : form.type === 'mutual_fund' ? 'e.g. 120503' : 'e.g. RELIANCE'}
+                    value={form.symbol || ''} onChange={(e) => upd('symbol', e.target.value)} />
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                    {form.type === 'crypto' && 'The coin id from coingecko.com (e.g. bitcoin, ethereum). "Refresh Prices" then updates current value automatically.'}
+                    {form.type === 'mutual_fund' && 'The scheme code from mfapi.in / AMFI. Refresh pulls the latest NAV × your units.'}
+                    {form.type === 'stock' && 'Live NSE/BSE prices need a market-data source; until one is configured, stock value stays manual.'}
+                  </div>
                 </div>
               )}
               {form.type === 'ppf' && (<>
