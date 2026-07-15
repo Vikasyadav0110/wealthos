@@ -25,3 +25,13 @@ export function resolveNewsKey(userKey?: string | null): string | undefined {
 export function resolveStockKey(userToken?: string | null): string | undefined {
   return (userToken && userToken.trim()) || envKey('GROWW_ACCESS_TOKEN');
 }
+
+// InvoiceKit bridge: base URL of the InvoiceKit Express API and a JWT for the
+// single user. Server-side only (never sent to the browser). When either is
+// unset, the bridge reports "not connected" instead of erroring.
+export function resolveInvoiceKitUrl(): string | undefined {
+  return envKey('INVOICEKIT_API_URL');
+}
+export function resolveInvoiceKitToken(): string | undefined {
+  return envKey('INVOICEKIT_TOKEN');
+}

@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, TrendingUp, PieChart,
   Newspaper, Bot, Settings, Zap, Compass, ReceiptText, Tag,
-  Target, Percent, Coins, Route
+  Target, Percent, Coins, Route, FileText, ExternalLink
 } from 'lucide-react';
 
 const NAV = [
@@ -69,6 +69,20 @@ export default function Sidebar() {
             ))}
           </div>
         ))}
+        {/* External: InvoiceKit (separate app) */}
+        <div>
+          <div className="nav-section-label">Business</div>
+          <a
+            href={process.env.NEXT_PUBLIC_INVOICEKIT_URL || 'http://localhost:8090'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-item"
+          >
+            <FileText className="nav-icon" size={18} />
+            Invoices
+            <ExternalLink size={12} style={{ marginLeft: 'auto', opacity: 0.6 }} />
+          </a>
+        </div>
       </div>
 
       <div className="sidebar-footer">

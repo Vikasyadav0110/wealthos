@@ -9,6 +9,7 @@ import { computeTakeHome } from '@/lib/income';
 import type { UserProfile, SalaryEntry, Investment, Goal } from '@/types';
 import { Wallet, TrendingUp, PieChart, Bot, ArrowRight, AlertTriangle, CheckCircle, Newspaper, Compass, Lightbulb, ChevronDown } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import InvoiceIncomeCard from '@/components/InvoiceIncomeCard';
 
 // Animated count-up hook
 function useCountUp(target: number, duration = 900) {
@@ -166,6 +167,9 @@ export default function Dashboard() {
           )}
         </div>
       )}
+
+      {/* Invoice income (from InvoiceKit bridge; renders only when connected) */}
+      <InvoiceIncomeCard />
 
       {/* Stat Cards */}
       <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
