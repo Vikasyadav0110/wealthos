@@ -18,9 +18,10 @@ export function resolveNewsKey(userKey?: string | null): string | undefined {
   return (userKey && userKey.trim()) || envKey('NEWSAPI_KEY');
 }
 
-// Optional stock-market data key. When unset, stock holdings stay manual (no
-// free/reliable real-time NSE/BSE source), and the price service reports them
-// as unavailable rather than guessing.
-export function resolveStockKey(userKey?: string | null): string | undefined {
-  return (userKey && userKey.trim()) || envKey('STOCK_API_KEY');
+// Groww trading API access token (Bearer). Obtained from the Groww API
+// dashboard after subscribing (~₹499/mo). Tokens expire, so this is refreshed
+// periodically — see DATA-BROKER.md. When unset, stock/index holdings stay
+// manual and the price service reports them as unavailable rather than guessing.
+export function resolveStockKey(userToken?: string | null): string | undefined {
+  return (userToken && userToken.trim()) || envKey('GROWW_ACCESS_TOKEN');
 }

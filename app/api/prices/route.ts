@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchCryptoPrices, fetchMutualFundNav, fetchStockPrice, type PriceResult } from '@/lib/server/prices';
+import { fetchCryptoPrices, fetchMutualFundNav, fetchStockPrice, fetchIndexLevel, type PriceResult } from '@/lib/server/prices';
 
 export const runtime = 'nodejs';
 
@@ -7,6 +7,20 @@ interface HoldingReq {
   id: string;
   type: string;
   symbol?: string;
+}
+
+// GET /api/prices?index=NSE_NIFTY → { symbol, level } | { level: null }
+// Live index level (Nifty 50, etc.) via the Groww API. Returns level: null when
+// no broker token is configured (never a fabricated number).
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const index = searchParams.get('index') || 'NSE_NIFTY';
+  try {
+    const level = await fetchIndexLevel(index);
+    return NextResponse.json({ symbol: index, level, updatedAt: new Date().toISOString() });
+  } catch {
+    return NextResponse.json({ symbol: index, level: null });
+  }
 }
 
 // POST { holdings: [{ id, type, symbol }] } → { prices: PriceResult[] }

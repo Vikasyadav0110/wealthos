@@ -65,14 +65,50 @@ export async function fetchMutualFundNav(code: string): Promise<{ nav: number; d
   return null;
 }
 
-// ── Stocks: guarded. Only priced when a stock data source is configured.
-// Adapter left thin so a chosen paid provider drops in here without touching
-// the route or client.
-export async function fetchStockPrice(symbol: string): Promise<number | null> {
-  const key = resolveStockKey();
-  if (!key) return null; // no source configured → unavailable, stays manual
-  // Placeholder for a concrete provider once a key/source is chosen.
-  // Intentionally returns null until wired to a real API, so we never guess.
-  void symbol;
+// ── Stocks & indices: Groww trading API (official, real-time NSE/BSE).
+// Only priced when GROWW_ACCESS_TOKEN is configured; otherwise returns null
+// (holding stays manual — we never fake a price). Docs:
+//   GET https://api.groww.in/v1/live-data/ltp
+//   headers: Authorization: Bearer <token>, Accept: application/json, X-API-VERSION: 1.0
+//   query:   segment=CASH, exchange_symbols=NSE_<SYMBOL>  (e.g. NSE_RELIANCE, NSE_NIFTY)
+const GROWW_BASE = 'https://api.groww.in/v1/live-data';
+
+async function growwLtp(exchangeSymbol: string): Promise<number | null> {
+  const token = resolveStockKey();
+  if (!token) return null; // no broker token configured → unavailable, stays manual
+  const cacheKey = `groww:${exchangeSymbol}`;
+  const c = cached(cacheKey);
+  if (c) return c.price;
+  try {
+    const url = `${GROWW_BASE}/ltp?segment=CASH&exchange_symbols=${encodeURIComponent(exchangeSymbol)}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'X-API-VERSION': '1.0',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // LTP response is keyed by the exchange symbol; value is the last price.
+    const raw = data?.[exchangeSymbol] ?? data?.data?.[exchangeSymbol] ?? data?.last_price;
+    const price = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isNaN(price) && price > 0) { put(cacheKey, price); return price; }
+  } catch { /* fall through to null */ }
   return null;
+}
+
+// A stock holding's symbol is the bare ticker (e.g. "RELIANCE"); we prefix the
+// exchange. Users can also enter a full "NSE_RELIANCE"/"BSE_TCS" to override.
+export async function fetchStockPrice(symbol: string): Promise<number | null> {
+  const s = symbol.trim().toUpperCase();
+  const exchangeSymbol = s.includes('_') ? s : `NSE_${s}`;
+  return growwLtp(exchangeSymbol);
+}
+
+// Nifty 50 (and other indices) — same LTP endpoint with the index symbol,
+// e.g. NSE_NIFTY. Returns { level } or null when no token / unavailable.
+export async function fetchIndexLevel(exchangeSymbol: string): Promise<number | null> {
+  return growwLtp(exchangeSymbol.trim().toUpperCase());
 }
