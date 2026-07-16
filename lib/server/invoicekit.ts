@@ -27,20 +27,32 @@ const EMPTY: InvoiceBridgeResult = {
   configured: false, invoices: [], paidTotal: 0, pendingTotal: 0, paidCount: 0, pendingCount: 0,
 };
 
-// InvoiceKit responses vary in field naming; read defensively.
+interface RawItem { qty?: number; rate?: number; quantity?: number; }
+
+// InvoiceKit invoices have NO stored `total` — the amount lives in
+// items[].qty × rate, plus a `tax` percentage. Compute it here. (Falls back to
+// a `total`/`amount` field if a future version adds one.)
+function invoiceTotal(r: Record<string, unknown>): number {
+  const stored = Number(r.total ?? r.amount ?? r.grandTotal);
+  if (!Number.isNaN(stored) && stored > 0) return stored;
+  const items = Array.isArray(r.items) ? (r.items as RawItem[]) : [];
+  const subtotal = items.reduce((s, it) => s + (Number(it.qty ?? it.quantity ?? 0) * Number(it.rate ?? 0)), 0);
+  const taxPct = Number(r.tax ?? 0) || 0;
+  return Math.round(subtotal * (1 + taxPct / 100));
+}
+
 function normalize(raw: unknown): BridgeInvoice {
   const r = raw as Record<string, unknown>;
   const client = r.client as Record<string, unknown> | string | undefined;
   const clientName = typeof client === 'object' && client
     ? String(client.name ?? client.clientName ?? '')
     : (r.clientName ? String(r.clientName) : '');
-  const total = Number(r.total ?? r.amount ?? r.grandTotal ?? 0) || 0;
   return {
     number: String(r.number ?? r.invoiceNumber ?? ''),
     clientName,
     status: String(r.status ?? 'draft'),
-    total,
-    issueDate: r.issueDate ? String(r.issueDate) : (r.date ? String(r.date) : null),
+    total: invoiceTotal(r),
+    issueDate: r.date ? String(r.date) : (r.issueDate ? String(r.issueDate) : null),
   };
 }
 
