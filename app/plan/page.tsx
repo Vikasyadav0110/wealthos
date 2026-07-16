@@ -8,8 +8,9 @@ import { assessTarget, suggestAllocation, defaultRateFor, type RiskAppetite } fr
 import { formatCurrency, generateId } from '@/lib/formatters';
 import type { SalaryEntry, Investment, UserProfile, BankAccount } from '@/types';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Target, TrendingUp, Wallet, PiggyBank, Sparkles, AlertTriangle, CheckCircle2, Info, Lightbulb, Shield, Plus, Trash2, Building2 } from 'lucide-react';
+import { Target, TrendingUp, Wallet, PiggyBank, Sparkles, AlertTriangle, CheckCircle2, Info, Lightbulb, Shield, Plus, Trash2, Building2, FileText } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
+import { ConfirmModal } from '@/components/ui/Dialogs';
 
 const BANK_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
 const BANK_PURPOSES = ['Salary Account', 'Monthly Expenses', 'Emergency Fund', 'Investments & Savings', 'General'];
@@ -32,6 +33,13 @@ export default function PlanPage() {
   // Bank accounts
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
 
+  // Invoice income (from the InvoiceKit bridge). Session-only: not persisted;
+  // the plan starts without it each visit and the user opts in (with confirm).
+  const [invoiceBridge, setInvoiceBridge] = useState<{ configured: boolean; paidTotal: number; paidCount: number } | null>(null);
+  const [invoiceMonthlyInput, setInvoiceMonthlyInput] = useState('');   // what the user types
+  const [invoiceMonthlyIncome, setInvoiceMonthlyIncome] = useState(0);  // confirmed, applied to surplus
+  const [showInvoiceConfirm, setShowInvoiceConfirm] = useState(false);
+
   const reload = useCallback(() => {
     const p = getProfile();
     setProfile(p);
@@ -44,14 +52,22 @@ export default function PlanPage() {
 
   useEffect(() => {
     reload();
+    // Fetch invoice income from the InvoiceKit bridge (read-only; renders the
+    // "include invoice income" card only when connected).
+    fetch('/api/invoices')
+      .then((r) => r.json())
+      .then((d) => setInvoiceBridge({ configured: !!d.configured, paidTotal: d.paidTotal || 0, paidCount: d.paidCount || 0 }))
+      .catch(() => setInvoiceBridge({ configured: false, paidTotal: 0, paidCount: 0 }));
   }, [reload]);
 
   const risk: RiskAppetite = profile?.riskAppetite ?? 'moderate';
   const latest = entries[0];
   const breakdown = latest ? computeIncomeBreakdown(latest) : null;
 
-  // Surplus = the app's stored monthly savings (consistent with the rest of the app).
-  const monthlySurplus = latest?.savings ?? 0;
+  // Surplus = the app's stored monthly savings (consistent with the rest of the
+  // app), plus any confirmed monthly invoice income the user chose to include.
+  const baseSurplus = latest?.savings ?? 0;
+  const monthlySurplus = baseSurplus + invoiceMonthlyIncome;
   // "Income" = in-hand take-home (gross - deductions + other income), not gross.
   const takeHome = breakdown?.takeHome ?? 0;
   const grossIncome = latest?.grossSalary ?? 0;
@@ -198,7 +214,7 @@ export default function PlanPage() {
         <div className="stat-card stat-card-green">
           <div className="stat-label"><PiggyBank size={13} style={{ display: 'inline', marginRight: 4 }} />Investable Surplus</div>
           <div className="stat-value">{formatCurrency(monthlySurplus)}</div>
-          <div className="stat-sub">per month to invest</div>
+          <div className="stat-sub">{invoiceMonthlyIncome > 0 ? `incl. ${formatCurrency(invoiceMonthlyIncome)} invoice income` : 'per month to invest'}</div>
         </div>
         <div className="stat-card stat-card-purple">
           <div className="stat-label">Savings Rate</div>
@@ -206,6 +222,54 @@ export default function PlanPage() {
           <div className="stat-sub">{savingsRate >= 20 ? '✅ On track' : 'Aim for 20%+'}</div>
         </div>
       </div>
+
+      {/* Invoice income → plan surplus (from InvoiceKit bridge; only when connected) */}
+      {invoiceBridge?.configured && invoiceBridge.paidTotal > 0 && (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <div className="section-title" style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>
+            <FileText size={16} style={{ display: 'inline', marginRight: '0.5rem', color: 'var(--blue)' }} />
+            Include Invoice Income?
+          </div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.85rem' }}>
+            You&apos;ve received <strong style={{ color: 'var(--green)' }}>{formatCurrency(invoiceBridge.paidTotal)}</strong> across {invoiceBridge.paidCount} paid invoice{invoiceBridge.paidCount !== 1 ? 's' : ''}. Since freelance income is irregular, enter a realistic <strong>monthly</strong> figure to add to your investable surplus for planning.
+          </div>
+          {invoiceMonthlyIncome > 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.75rem', borderRadius: 'var(--radius-md)', background: 'rgba(5,150,105,0.1)', border: '1px solid rgba(5,150,105,0.3)', fontSize: '0.85rem' }}>
+                <CheckCircle2 size={15} style={{ color: 'var(--green)' }} />
+                Including <strong>{formatCurrency(invoiceMonthlyIncome)}/mo</strong> in your plan
+              </span>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setInvoiceMonthlyIncome(0); setInvoiceMonthlyInput(''); success('Invoice income removed from plan'); }}>
+                Remove
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Monthly invoice income (₹)</label>
+                <input className="input" type="number" min={0} placeholder="e.g. 40000" value={invoiceMonthlyInput}
+                  onChange={(e) => setInvoiceMonthlyInput(e.target.value)} style={{ width: 180 }} />
+              </div>
+              <button className="btn btn-primary btn-sm" disabled={!(Number(invoiceMonthlyInput) > 0)}
+                onClick={() => setShowInvoiceConfirm(true)}>
+                <Plus size={14} /> Include in plan
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Confirmation before invoice income changes the plan numbers */}
+      <ConfirmModal
+        isOpen={showInvoiceConfirm}
+        danger={false}
+        title="Include invoice income in your plan?"
+        message={`Adding ${formatCurrency(Number(invoiceMonthlyInput) || 0)}/month will raise your investable surplus from ${formatCurrency(baseSurplus)} to ${formatCurrency(baseSurplus + (Number(invoiceMonthlyInput) || 0))}. This changes your required SIP, the corpus projection, and the suggested allocation below. It is not saved — the plan resets to salary-only next visit.`}
+        confirmLabel="Include it"
+        cancelLabel="Cancel"
+        onConfirm={() => { setInvoiceMonthlyIncome(Number(invoiceMonthlyInput) || 0); setShowInvoiceConfirm(false); success('Invoice income added to your plan'); }}
+        onCancel={() => setShowInvoiceConfirm(false)}
+      />
 
       {/* Emergency Fund + Bank Accounts */}
       <div className="grid-2" style={{ marginBottom: '1.5rem', alignItems: 'start' }}>
