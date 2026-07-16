@@ -13,6 +13,12 @@ export interface BridgeInvoice {
   issueDate: string | null;
 }
 
+export interface ClientIncome {
+  clientName: string;
+  total: number;
+  count: number;
+}
+
 export interface InvoiceBridgeResult {
   configured: boolean;      // false when URL/token unset OR InvoiceKit unreachable
   invoices: BridgeInvoice[];
@@ -20,11 +26,12 @@ export interface InvoiceBridgeResult {
   pendingTotal: number;     // pending + overdue (money owed to you)
   paidCount: number;
   pendingCount: number;
+  byClient: ClientIncome[]; // paid income grouped by client company, biggest first
   error?: string;
 }
 
 const EMPTY: InvoiceBridgeResult = {
-  configured: false, invoices: [], paidTotal: 0, pendingTotal: 0, paidCount: 0, pendingCount: 0,
+  configured: false, invoices: [], paidTotal: 0, pendingTotal: 0, paidCount: 0, pendingCount: 0, byClient: [],
 };
 
 interface RawItem { qty?: number; rate?: number; quantity?: number; }
@@ -73,6 +80,17 @@ export async function fetchInvoices(): Promise<InvoiceBridgeResult> {
 
     const paid = invoices.filter((i) => i.status === 'paid');
     const owed = invoices.filter((i) => i.status === 'pending' || i.status === 'overdue');
+
+    // Group paid income by client company (biggest first).
+    const clientMap = new Map<string, ClientIncome>();
+    paid.forEach((i) => {
+      const name = i.clientName || 'Unknown client';
+      const existing = clientMap.get(name);
+      if (existing) { existing.total += i.total; existing.count += 1; }
+      else clientMap.set(name, { clientName: name, total: i.total, count: 1 });
+    });
+    const byClient = [...clientMap.values()].sort((a, b) => b.total - a.total);
+
     return {
       configured: true,
       invoices,
@@ -80,6 +98,7 @@ export async function fetchInvoices(): Promise<InvoiceBridgeResult> {
       pendingTotal: owed.reduce((s, i) => s + i.total, 0),
       paidCount: paid.length,
       pendingCount: owed.length,
+      byClient,
     };
   } catch (err) {
     return { ...EMPTY, error: err instanceof Error ? err.message : 'InvoiceKit unreachable' };

@@ -8,6 +8,7 @@ import { Plus, Trash2, X, TrendingUp, DollarSign, Receipt, Eye, Download, Printe
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ConfirmModal, InputModal } from '@/components/ui/Dialogs';
 import { useToast } from '@/components/ui/Toast';
+import InvoiceIncomeSources from '@/components/InvoiceIncomeSources';
 
 const EMPTY_INCOME = (): IncomeSource => ({
   id: generateId(),
@@ -571,6 +572,9 @@ export default function SalaryPage() {
           )}
         </div>
       )}
+
+      {/* Invoice income (live from InvoiceKit; renders only when connected) */}
+      <InvoiceIncomeSources />
 
       {/* Charts Section */}
       {chartData.length > 0 && (
